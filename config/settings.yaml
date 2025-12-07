@@ -1,0 +1,277 @@
+# ==============================================================================
+# ODECI - Configurações do Pipeline
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# Configurações de Embedding
+# ------------------------------------------------------------------------------
+embedding:
+  # Provedor principal: voyage, openai, local
+  provider: voyage
+  
+  # Modelos por domínio (Voyage AI)
+  models:
+    general: voyage-3-large        # Conteúdo geral e multilíngue
+    legal: voyage-law-2            # Conteúdo jurídico
+    code: voyage-code-3            # Código Solidity e smart contracts
+    multilingual: voyage-multilingual-2  # Backup multilíngue
+  
+  # Modelos alternativos (OpenAI)
+  openai_models:
+    general: text-embedding-3-large
+    small: text-embedding-3-small
+  
+  # Dimensões do embedding (Matryoshka)
+  # Opções: 256, 512, 1024, 2048 (para voyage-3-large)
+  dimensions: 1024
+  
+  # Tipo de quantização: float, int8, binary
+  output_dtype: float
+  
+  # Batch size para processamento
+  batch_size: 32
+  
+  # Timeout para requisições (segundos)
+  timeout: 60
+  
+  # Retry configuration
+  max_retries: 3
+  retry_delay: 1.0
+
+# ------------------------------------------------------------------------------
+# Configurações de Chunking
+# ------------------------------------------------------------------------------
+chunking:
+  # Estratégia: hierarchical, semantic, fixed
+  strategy: hierarchical
+  
+  # Tamanhos de chunk (em tokens)
+  sizes:
+    parent: 2000      # Chunks de contexto completo
+    child: 400        # Chunks principais para retrieval
+    atomic: 100       # Definições e dados pontuais
+  
+  # Sobreposição entre chunks (em tokens)
+  overlap:
+    parent: 200       # 10% do parent
+    child: 80         # 20% do child
+    atomic: 20        # 20% do atomic
+  
+  # Separadores prioritários para corte
+  separators:
+    - "\n\n\n"        # Quebra de seção
+    - "\n\n"          # Quebra de parágrafo
+    - "\n"            # Quebra de linha
+    - ". "            # Fim de sentença
+    - "; "            # Ponto e vírgula
+    - ", "            # Vírgula
+  
+  # Preservar estrutura de código
+  preserve_code_blocks: true
+  
+  # Expandir notas de rodapé inline
+  expand_footnotes: true
+
+# ------------------------------------------------------------------------------
+# Classificador de Domínio
+# ------------------------------------------------------------------------------
+domain_classifier:
+  # Padrões para identificação de domínio jurídico
+  legal_patterns:
+    keywords:
+      - jurisdição
+      - invalidade
+      - responsabilidade
+      - jurisprudência
+      - doutrina
+      - tribunal
+      - sentença
+      - decisão
+      - contrato
+      - cláusula
+      - artigo
+      - lei
+      - direito
+      - obrigação
+      - litígio
+    
+    # Score mínimo para classificar como jurídico
+    min_score: 3
+  
+  # Padrões para identificação de código
+  code_patterns:
+    keywords:
+      - function
+      - contract
+      - pragma
+      - solidity
+      - "require("
+      - emit
+      - mapping
+      - uint256
+      - address
+      - modifier
+      - event
+      - struct
+      - import
+      - interface
+    
+    # Regex para blocos de código
+    code_block_regex: "```[\\s\\S]*?```|`[^`]+`"
+    
+    min_score: 2
+  
+  # Padrões para conteúdo técnico geral
+  tech_patterns:
+    keywords:
+      - blockchain
+      - criptografia
+      - hash
+      - consenso
+      - descentralizado
+      - token
+      - protocolo
+      - rede
+      - transação
+      - mineração
+    
+    min_score: 3
+
+# ------------------------------------------------------------------------------
+# Armazenamento Vetorial
+# ------------------------------------------------------------------------------
+vector_store:
+  # Backend: qdrant, chroma, pinecone, memory
+  backend: qdrant
+  
+  # Configuração Qdrant
+  qdrant:
+    # Modo: local, cloud
+    mode: local
+    # Caminho para armazenamento local
+    path: ./data/qdrant
+    # URL para cloud (usar variável de ambiente)
+    # url: ${QDRANT_URL}
+    
+  # Configuração ChromaDB
+  chroma:
+    # Modo: local, http
+    mode: local
+    path: ./data/chroma
+    
+  # Configuração de coleções
+  collections:
+    # Prefixo para nomes de coleções
+    prefix: odeci_
+    # Separar por domínio
+    separate_by_domain: true
+    # Namespaces
+    namespaces:
+      - legal
+      - tech
+      - code
+      - general
+  
+  # Configuração de índice
+  index:
+    # Métrica de similaridade: cosine, dot, euclidean
+    metric: cosine
+    # Tipo de índice HNSW
+    hnsw:
+      m: 16
+      ef_construct: 100
+
+# ------------------------------------------------------------------------------
+# Retrieval e Reranking
+# ------------------------------------------------------------------------------
+retrieval:
+  # Estratégia: dense, sparse, hybrid
+  strategy: hybrid
+  
+  # Número de resultados por namespace
+  top_k_per_namespace: 20
+  
+  # Número final de resultados
+  final_top_k: 10
+  
+  # Peso para busca híbrida (dense vs sparse)
+  hybrid_alpha: 0.7  # 0.7 = 70% dense, 30% sparse
+  
+  # Busca em parent chunks para contexto
+  include_parent_context: true
+  
+  # Reranking
+  reranking:
+    enabled: true
+    provider: cohere  # cohere, cross-encoder
+    model: rerank-multilingual-v3.0
+    top_n: 10
+
+# ------------------------------------------------------------------------------
+# Processamento de Documento
+# ------------------------------------------------------------------------------
+document_processing:
+  # Tipos de arquivo suportados
+  supported_formats:
+    - .docx
+    - .pdf
+    - .txt
+    - .md
+    - .html
+  
+  # Extração de metadados
+  extract_metadata: true
+  
+  # Preservar estrutura de headings
+  preserve_headings: true
+  
+  # Processar tabelas
+  process_tables: true
+  
+  # Idioma padrão
+  default_language: pt-br
+  
+  # Encoding
+  encoding: utf-8
+
+# ------------------------------------------------------------------------------
+# Logging e Monitoramento
+# ------------------------------------------------------------------------------
+logging:
+  # Nível: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  level: INFO
+  
+  # Formato
+  format: "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+  
+  # Arquivo de log
+  file: ./logs/odeci.log
+  
+  # Rotação de logs
+  rotation:
+    max_bytes: 10485760  # 10MB
+    backup_count: 5
+  
+  # Log de métricas
+  metrics:
+    enabled: true
+    track_embedding_time: true
+    track_chunk_stats: true
+
+# ------------------------------------------------------------------------------
+# Cache
+# ------------------------------------------------------------------------------
+cache:
+  enabled: true
+  
+  # Backend: memory, redis, disk
+  backend: disk
+  
+  # TTL em segundos (24 horas)
+  ttl: 86400
+  
+  # Diretório para cache em disco
+  path: ./data/cache
+  
+  # Tamanho máximo (MB)
+  max_size_mb: 1000
