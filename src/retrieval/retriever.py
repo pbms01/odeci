@@ -243,83 +243,36 @@ class HybridRetriever:
         include_parent = include_parent if include_parent is not None else self._include_parent
         
         logger.info(f"Buscando: '{query}' em {collection}")
-        print(f"[ODECI Search] Query: '{query[:50]}...' em collection={collection}")
 
-        # 1. Gerar embeddings da query com múltiplos modelos
-        # Isso é necessário porque chunks foram embedados com diferentes modelos
-        # baseado no domínio detectado durante a ingestão
-        try:
-            query_embeddings = self._embed_query_multi_model(query)
-            print(f"[ODECI Search] Embeddings gerados com {len(query_embeddings)} modelo(s): {list(query_embeddings.keys())}")
-            logger.info(f"Query embedada com {len(query_embeddings)} modelo(s): {list(query_embeddings.keys())}")
-        except Exception as e:
-            print(f"[ODECI Search] ERRO ao gerar embeddings: {e}")
-            logger.error(f"Erro ao gerar embeddings: {e}")
-            return []
+        # 1. Gerar embedding da query (modelo único - voyage-law-2)
+        query_vector = self._embed_query(query)
+        logger.info(f"Query embedada, dim={len(query_vector)}")
 
-        # 2. Buscar com cada modelo e combinar resultados
-        all_results: dict[str, SearchResult] = {}
+        # 2. Buscar no vector store
+        if namespaces is None:
+            # Busca geral sem namespace
+            results = self._store.search(
+                collection=collection,
+                query_vector=query_vector,
+                top_k=self._top_k_per_namespace * 2,  # Buscar mais para compensar reranking
+                filter_metadata=filter_metadata,
+            )
+        else:
+            # Buscar em cada namespace
+            results_by_namespace = {}
+            for namespace in namespaces:
+                ns_results = self._search_namespace(
+                    collection=collection,
+                    query_vector=query_vector,
+                    namespace=namespace,
+                    top_k=self._top_k_per_namespace,
+                    filter_metadata=filter_metadata,
+                )
+                results_by_namespace[namespace] = ns_results
 
-        search_debug = []  # Para diagnóstico
-        for model, query_vector in query_embeddings.items():
-            logger.info(f"Buscando com modelo {model}, vetor dim={len(query_vector)}")
-            print(f"[ODECI Search] Buscando com {model}, dim={len(query_vector)}, top_k={self._top_k_per_namespace}")
-            try:
-                if namespaces is None:
-                    # Busca geral sem namespace
-                    model_results = self._store.search(
-                        collection=collection,
-                        query_vector=query_vector,
-                        top_k=self._top_k_per_namespace,
-                        filter_metadata=filter_metadata,
-                    )
-                else:
-                    # Buscar em cada namespace
-                    results_by_namespace = {}
-                    for namespace in namespaces:
-                        ns_results = self._search_namespace(
-                            collection=collection,
-                            query_vector=query_vector,
-                            namespace=namespace,
-                            top_k=self._top_k_per_namespace,
-                            filter_metadata=filter_metadata,
-                        )
-                        results_by_namespace[namespace] = ns_results
+            # Combinar resultados dos namespaces
+            results = self._combine_results(results_by_namespace)
 
-                    # Combinar resultados dos namespaces
-                    model_results = self._combine_results(results_by_namespace)
-
-                # Diagnóstico detalhado
-                scores = [r.score for r in model_results[:5]] if model_results else []
-                debug_msg = f"{model}: {len(model_results)} resultados, scores={scores}"
-                search_debug.append(debug_msg)
-                print(f"[ODECI Search] {debug_msg}")
-                logger.info(f"Modelo {model}: {len(model_results)} resultados encontrados")
-
-                # Adicionar resultados, mantendo o melhor score se duplicado
-                for result in model_results:
-                    if result.chunk_id not in all_results:
-                        all_results[result.chunk_id] = result
-                    elif result.score > all_results[result.chunk_id].score:
-                        all_results[result.chunk_id] = result
-
-            except Exception as e:
-                logger.error(f"Erro ao buscar com modelo {model}: {e}")
-                import traceback
-                logger.error(traceback.format_exc())
-
-        # Converter para lista ordenada por score
-        results = sorted(all_results.values(), key=lambda r: r.score, reverse=True)
-
-        # Salvar debug info para acesso externo
-        self._last_search_debug = {
-            "models": list(query_embeddings.keys()),
-            "results_per_model": search_debug,
-            "total_results": len(results),
-        }
-
-        print(f"[ODECI Search] Total de resultados combinados: {len(results)}")
-        print(f"[ODECI Search] Debug por modelo: {search_debug}")
         logger.info(f"Encontrados {len(results)} resultados iniciais")
         
         # 3. Reranking

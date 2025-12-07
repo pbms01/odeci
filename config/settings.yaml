@@ -10,11 +10,13 @@ embedding:
   provider: voyage
   
   # Modelos por domínio (Voyage AI)
+  # IMPORTANTE: Usar o MESMO modelo para todos os domínios
+  # para garantir que embeddings de query e documentos sejam comparáveis
   models:
-    general: voyage-3-large        # Conteúdo geral e multilíngue
+    general: voyage-law-2          # Usar voyage-law-2 para tudo
     legal: voyage-law-2            # Conteúdo jurídico
-    code: voyage-code-3            # Código Solidity e smart contracts
-    multilingual: voyage-multilingual-2  # Backup multilíngue
+    code: voyage-law-2             # Código também usa voyage-law-2
+    multilingual: voyage-law-2     # Backup também usa voyage-law-2
   
   # Modelos alternativos (OpenAI)
   openai_models:
