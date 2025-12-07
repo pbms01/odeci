@@ -243,54 +243,69 @@ class HybridRetriever:
         include_parent = include_parent if include_parent is not None else self._include_parent
         
         logger.info(f"Buscando: '{query}' em {collection}")
+        print(f"[ODECI Search] Query: '{query[:50]}...' em collection={collection}")
 
         # 1. Gerar embeddings da query com múltiplos modelos
         # Isso é necessário porque chunks foram embedados com diferentes modelos
         # baseado no domínio detectado durante a ingestão
-        query_embeddings = self._embed_query_multi_model(query)
-        logger.info(f"Query embedada com {len(query_embeddings)} modelo(s): {list(query_embeddings.keys())}")
+        try:
+            query_embeddings = self._embed_query_multi_model(query)
+            print(f"[ODECI Search] Embeddings gerados com {len(query_embeddings)} modelo(s): {list(query_embeddings.keys())}")
+            logger.info(f"Query embedada com {len(query_embeddings)} modelo(s): {list(query_embeddings.keys())}")
+        except Exception as e:
+            print(f"[ODECI Search] ERRO ao gerar embeddings: {e}")
+            logger.error(f"Erro ao gerar embeddings: {e}")
+            return []
 
         # 2. Buscar com cada modelo e combinar resultados
         all_results: dict[str, SearchResult] = {}
 
         for model, query_vector in query_embeddings.items():
-            if namespaces is None:
-                # Busca geral sem namespace
-                model_results = self._store.search(
-                    collection=collection,
-                    query_vector=query_vector,
-                    top_k=self._top_k_per_namespace,
-                    filter_metadata=filter_metadata,
-                )
-            else:
-                # Buscar em cada namespace
-                results_by_namespace = {}
-                for namespace in namespaces:
-                    ns_results = self._search_namespace(
+            logger.info(f"Buscando com modelo {model}, vetor dim={len(query_vector)}")
+            try:
+                if namespaces is None:
+                    # Busca geral sem namespace
+                    model_results = self._store.search(
                         collection=collection,
                         query_vector=query_vector,
-                        namespace=namespace,
                         top_k=self._top_k_per_namespace,
                         filter_metadata=filter_metadata,
                     )
-                    results_by_namespace[namespace] = ns_results
+                else:
+                    # Buscar em cada namespace
+                    results_by_namespace = {}
+                    for namespace in namespaces:
+                        ns_results = self._search_namespace(
+                            collection=collection,
+                            query_vector=query_vector,
+                            namespace=namespace,
+                            top_k=self._top_k_per_namespace,
+                            filter_metadata=filter_metadata,
+                        )
+                        results_by_namespace[namespace] = ns_results
 
-                # Combinar resultados dos namespaces
-                model_results = self._combine_results(results_by_namespace)
+                    # Combinar resultados dos namespaces
+                    model_results = self._combine_results(results_by_namespace)
 
-            # Adicionar resultados, mantendo o melhor score se duplicado
-            for result in model_results:
-                if result.chunk_id not in all_results:
-                    all_results[result.chunk_id] = result
-                elif result.score > all_results[result.chunk_id].score:
-                    all_results[result.chunk_id] = result
+                logger.info(f"Modelo {model}: {len(model_results)} resultados encontrados")
 
-            logger.debug(f"Modelo {model}: {len(model_results)} resultados")
+                # Adicionar resultados, mantendo o melhor score se duplicado
+                for result in model_results:
+                    if result.chunk_id not in all_results:
+                        all_results[result.chunk_id] = result
+                    elif result.score > all_results[result.chunk_id].score:
+                        all_results[result.chunk_id] = result
+
+            except Exception as e:
+                logger.error(f"Erro ao buscar com modelo {model}: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
 
         # Converter para lista ordenada por score
         results = sorted(all_results.values(), key=lambda r: r.score, reverse=True)
-        
-        logger.debug(f"Encontrados {len(results)} resultados iniciais")
+
+        print(f"[ODECI Search] Total de resultados combinados: {len(results)}")
+        logger.info(f"Encontrados {len(results)} resultados iniciais")
         
         # 3. Reranking
         rerank_scores: dict[str, float] = {}
