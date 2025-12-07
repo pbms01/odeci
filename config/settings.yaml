@@ -201,10 +201,10 @@ retrieval:
   
   # Busca em parent chunks para contexto
   include_parent_context: true
-  
-  # Reranking
+
+  # Reranking (TEMPORARIAMENTE DESABILITADO para debug)
   reranking:
-    enabled: true
+    enabled: false  # MUDADO: era true - desabilitado para debug
     provider: cohere  # cohere, cross-encoder
     model: rerank-multilingual-v3.0
     top_n: 10
