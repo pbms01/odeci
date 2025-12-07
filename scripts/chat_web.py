@@ -397,6 +397,12 @@ def main():
             collections = get_available_collections()
             if collections:
                 st.caption(f"Encontradas: {len(collections)} coleção(ões)")
+
+                # Mostrar estatísticas detalhadas
+                for coll_name in collections:
+                    stats = get_collection_stats(coll_name)
+                    if stats.get("exists"):
+                        st.caption(f"📊 {coll_name}: {stats.get('count', 0)} vetores")
         except Exception as e:
             st.error(f"Erro ao conectar: {e}")
             collections = []
