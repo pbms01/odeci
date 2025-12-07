@@ -247,22 +247,50 @@ class HybridEmbedder(BaseEmbedder):
     ) -> list[float]:
         """
         Gera embedding para query de busca.
-        
+
         Args:
             query: Texto da query.
             domain: Domínio para seleção de modelo (opcional).
-            
+
         Returns:
             Vetor de embedding.
         """
         if domain:
             model = self._get_model_for_domain(domain)
         else:
-            # Usar modelo geral para queries
+            # Usar modelo padrão (legal para documentos jurídicos)
             model = self._default_model
-        
+
         embedder = self._get_embedder(model)
         return embedder.embed_query(query)
+
+    def embed_query_multi_model(
+        self,
+        query: str,
+    ) -> dict[str, list[float]]:
+        """
+        Gera embeddings para query usando TODOS os modelos.
+
+        Isso permite buscar em chunks que foram embedados com diferentes
+        modelos durante a ingestão.
+
+        Args:
+            query: Texto da query.
+
+        Returns:
+            Dict mapeando modelo -> vetor de embedding.
+        """
+        embeddings = {}
+
+        # Usar todos os modelos únicos do mapeamento
+        unique_models = set(self._model_map.values())
+
+        for model in unique_models:
+            embedder = self._get_embedder(model)
+            embeddings[model] = embedder.embed_query(query)
+            logger.debug(f"Query embedada com {model}")
+
+        return embeddings
     
     def get_statistics(self) -> dict[str, int]:
         """

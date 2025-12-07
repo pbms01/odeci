@@ -90,19 +90,35 @@ class HybridRetriever:
     def _embed_query(self, query: str) -> list[float]:
         """
         Gera embedding para query.
-        
+
         Args:
             query: Texto da query.
-            
+
         Returns:
             Vetor de embedding.
         """
         # Usar método específico para query se disponível
         if hasattr(self._embedder, 'embed_query'):
             return self._embedder.embed_query(query)
-        
+
         result = self._embedder.embed_text(query, input_type="query")
         return result.embedding
+
+    def _embed_query_multi_model(self, query: str) -> dict[str, list[float]]:
+        """
+        Gera embeddings para query usando múltiplos modelos.
+
+        Args:
+            query: Texto da query.
+
+        Returns:
+            Dict mapeando modelo -> vetor de embedding.
+        """
+        if hasattr(self._embedder, 'embed_query_multi_model'):
+            return self._embedder.embed_query_multi_model(query)
+
+        # Fallback: usar método padrão
+        return {"default": self._embed_query(query)}
     
     def _search_namespace(
         self,
@@ -227,34 +243,52 @@ class HybridRetriever:
         include_parent = include_parent if include_parent is not None else self._include_parent
         
         logger.info(f"Buscando: '{query}' em {collection}")
-        
-        # 1. Gerar embedding da query
-        query_vector = self._embed_query(query)
-        
-        # 2. Buscar em namespaces
-        if namespaces is None:
-            # Busca geral sem namespace
-            results = self._store.search(
-                collection=collection,
-                query_vector=query_vector,
-                top_k=self._top_k_per_namespace * 2,
-                filter_metadata=filter_metadata,
-            )
-        else:
-            # Buscar em cada namespace
-            results_by_namespace = {}
-            for namespace in namespaces:
-                ns_results = self._search_namespace(
+
+        # 1. Gerar embeddings da query com múltiplos modelos
+        # Isso é necessário porque chunks foram embedados com diferentes modelos
+        # baseado no domínio detectado durante a ingestão
+        query_embeddings = self._embed_query_multi_model(query)
+        logger.info(f"Query embedada com {len(query_embeddings)} modelo(s): {list(query_embeddings.keys())}")
+
+        # 2. Buscar com cada modelo e combinar resultados
+        all_results: dict[str, SearchResult] = {}
+
+        for model, query_vector in query_embeddings.items():
+            if namespaces is None:
+                # Busca geral sem namespace
+                model_results = self._store.search(
                     collection=collection,
                     query_vector=query_vector,
-                    namespace=namespace,
                     top_k=self._top_k_per_namespace,
                     filter_metadata=filter_metadata,
                 )
-                results_by_namespace[namespace] = ns_results
-            
-            # Combinar resultados
-            results = self._combine_results(results_by_namespace)
+            else:
+                # Buscar em cada namespace
+                results_by_namespace = {}
+                for namespace in namespaces:
+                    ns_results = self._search_namespace(
+                        collection=collection,
+                        query_vector=query_vector,
+                        namespace=namespace,
+                        top_k=self._top_k_per_namespace,
+                        filter_metadata=filter_metadata,
+                    )
+                    results_by_namespace[namespace] = ns_results
+
+                # Combinar resultados dos namespaces
+                model_results = self._combine_results(results_by_namespace)
+
+            # Adicionar resultados, mantendo o melhor score se duplicado
+            for result in model_results:
+                if result.chunk_id not in all_results:
+                    all_results[result.chunk_id] = result
+                elif result.score > all_results[result.chunk_id].score:
+                    all_results[result.chunk_id] = result
+
+            logger.debug(f"Modelo {model}: {len(model_results)} resultados")
+
+        # Converter para lista ordenada por score
+        results = sorted(all_results.values(), key=lambda r: r.score, reverse=True)
         
         logger.debug(f"Encontrados {len(results)} resultados iniciais")
         
