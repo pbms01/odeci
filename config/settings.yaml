@@ -321,9 +321,9 @@ chat:
   # Interface Web
   web:
     # Título da aplicação
-    title: "ODECI Chat"
+    title: "ODECI Chat - O Direito na Era dos Contratos Inteligentes - Livro por Pedro Borges Mourão"
     # Descrição
-    description: "Assistente especializado em documentos jurídicos e tecnológicos"
+    description: "Assistente especializado no livro 'O Direito na Era dos Contratos Inteligentes' de Pedro Borges Mourão"
     # Tema: light, dark, auto
     theme: auto
     # Porta padrão
