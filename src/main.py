@@ -20,7 +20,7 @@ from uuid import UUID
 from tqdm import tqdm
 
 if TYPE_CHECKING:
-    pass
+    from src.config import Settings
 
 from src.config import Settings, get_settings, ensure_directories
 from src.models.document import Document, DocumentMetadata, DocumentSection

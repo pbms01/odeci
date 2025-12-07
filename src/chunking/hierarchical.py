@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import re
 from typing import TYPE_CHECKING
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import tiktoken
 
@@ -255,7 +255,7 @@ class HierarchicalChunker(BaseChunker):
         text: str,
         level: ChunkLevel,
         document: Document,
-        parent_id: str | None = None,
+        parent_id: UUID | None = None,
         section: str | None = None,
         chapter: str | None = None
     ) -> Chunk:
@@ -309,7 +309,7 @@ class HierarchicalChunker(BaseChunker):
         self,
         text: str,
         document: Document,
-        parent_id: str,
+        parent_id: UUID,
         section: str | None = None
     ) -> list[Chunk]:
         """
@@ -399,7 +399,7 @@ class HierarchicalChunker(BaseChunker):
                 text=restored_text,
                 level=ChunkLevel.CHILD,
                 document=document,
-                parent_id=str(parent.id),
+                parent_id=parent.id,
                 section=section.title,
             )
             child_chunks.append(child)
@@ -409,7 +409,7 @@ class HierarchicalChunker(BaseChunker):
             atomics = self._extract_atomic_chunks(
                 restored_text,
                 document,
-                str(child.id),
+                child.id,
                 section.title
             )
             atomic_chunks.extend(atomics)
@@ -502,17 +502,17 @@ class HierarchicalChunker(BaseChunker):
                         text=restored_child,
                         level=ChunkLevel.CHILD,
                         document=document,
-                        parent_id=str(parent.id),
+                        parent_id=parent.id,
                         section=f"Parte {i + 1}",
                     )
                     child_chunks.append(child)
                     parent.children_ids.append(child.id)
-                    
+
                     # Extrair atomics
                     atomics = self._extract_atomic_chunks(
                         restored_child,
                         document,
-                        str(child.id)
+                        child.id
                     )
                     atomic_chunks.extend(atomics)
         

@@ -207,9 +207,8 @@ class HybridEmbedder(BaseEmbedder):
             model = self._get_model_for_domain(domain)
             chunks_by_model[model].append((idx, chunk))
         
-        logger.info(f"Distribuição por modelo: {
-            {k: len(v) for k, v in chunks_by_model.items()}
-        }")
+        distribution = {k: len(v) for k, v in chunks_by_model.items()}
+        logger.info(f"Distribuição por modelo: {distribution}")
         
         # Processar cada grupo
         results: dict[int, Chunk] = {}

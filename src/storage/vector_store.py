@@ -10,7 +10,7 @@ import logging
 import os
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
-from uuid import UUID
+from uuid import UUID, uuid4
 
 if TYPE_CHECKING:
     from src.config import VectorStoreConfig
@@ -263,10 +263,13 @@ class QdrantVectorStore(BaseVectorStore):
             
             point = results[0]
             payload = point.payload or {}
-            
-            # Reconstruir chunk
+
+            # Reconstruir chunk - tratar document_id vazio
+            doc_id_str = payload.get("document_id")
+            document_id = UUID(doc_id_str) if doc_id_str else uuid4()
+
             metadata = ChunkMetadata(
-                document_id=UUID(payload.get("document_id", "")),
+                document_id=document_id,
                 document_name=payload.get("document_name", ""),
                 section=payload.get("section"),
                 domain=Domain(payload.get("domain", "general")),
@@ -274,14 +277,17 @@ class QdrantVectorStore(BaseVectorStore):
                 token_count=payload.get("token_count", 0),
                 language=payload.get("language", "pt-br"),
             )
-            
+
+            # point.vector pode ser dict (vetores nomeados) ou None
+            embedding = point.vector if isinstance(point.vector, list) else None
+
             return Chunk(
                 id=UUID(chunk_id),
                 text=payload.get("text", ""),
                 level=ChunkLevel(payload.get("level", "child")),
                 parent_id=UUID(payload["parent_id"]) if payload.get("parent_id") else None,
                 metadata=metadata,
-                embedding=point.vector,
+                embedding=embedding,
             )
         except Exception as e:
             logger.error(f"Erro ao recuperar chunk {chunk_id}: {e}")
@@ -469,18 +475,22 @@ class ChromaVectorStore(BaseVectorStore):
             
             if not result["ids"]:
                 return None
-            
+
             metadata_dict = result["metadatas"][0] if result["metadatas"] else {}
-            
+
+            # Tratar document_id vazio
+            doc_id_str = metadata_dict.get("document_id")
+            document_id = UUID(doc_id_str) if doc_id_str else uuid4()
+
             metadata = ChunkMetadata(
-                document_id=UUID(metadata_dict.get("document_id", "")),
+                document_id=document_id,
                 document_name=metadata_dict.get("document_name", ""),
                 section=metadata_dict.get("section"),
                 domain=Domain(metadata_dict.get("domain", "general")),
                 has_code=metadata_dict.get("has_code", False),
                 token_count=metadata_dict.get("token_count", 0),
             )
-            
+
             return Chunk(
                 id=UUID(chunk_id),
                 text=result["documents"][0] if result["documents"] else "",
