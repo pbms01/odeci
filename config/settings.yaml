@@ -306,7 +306,7 @@ chat:
   include_sources: true
 
   # Gerar perguntas de follow-up
-  include_follow_up: true
+  include_follow_up: false
 
   # Streaming de respostas
   stream: true
