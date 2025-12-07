@@ -29,8 +29,8 @@ sys.path.insert(0, str(ROOT_DIR))
 import streamlit as st
 
 # Versão do deploy - atualizar a cada mudança significativa
-APP_VERSION = "v1.0.1-debug"
-BUILD_ID = "2024-12-07T18:30"  # Timestamp do build
+APP_VERSION = "v1.0.2-fix"
+BUILD_ID = "2024-12-07T18:45"  # Timestamp do build
 
 from src.chat.models import ChatConfig, ResponseStyle
 from src.chat.service import ChatService

@@ -86,13 +86,15 @@ class ContextBuilder:
         print(f"[ODECI ContextBuilder] Retriever type: {type(self._retriever).__name__}")
 
         # Buscar documentos relevantes
+        # NOTA: rerank=False temporariamente para debug - o reranking Cohere
+        # estava causando problemas com contexto vazio
         results = self._retriever.search(
             query=query,
             collection=collection,
             namespaces=namespaces,
             top_k=max_sources,
             filter_metadata=filter_metadata,
-            rerank=True,
+            rerank=False,  # MUDADO: era True - desabilitado para debug
             include_parent=include_parent,
         )
 
