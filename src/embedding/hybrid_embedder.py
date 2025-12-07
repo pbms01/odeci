@@ -81,9 +81,13 @@ class HybridEmbedder(BaseEmbedder):
         
         # Inicializar embedders (lazy loading)
         self._embedders: dict[str, VoyageEmbedder] = {}
-        
-        # Modelo padrão
-        self._default_model = "voyage-3-large"
+
+        # Modelo padrão para queries - usar modelo legal para documentos jurídicos
+        # Isso garante compatibilidade com chunks embedados com voyage-law-2
+        if config:
+            self._default_model = config.models.legal  # voyage-law-2
+        else:
+            self._default_model = "voyage-law-2"
         
         logger.info(
             f"HybridEmbedder inicializado com mapeamento: {self._model_map}"

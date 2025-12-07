@@ -145,14 +145,16 @@ def _create_embedder(settings: Settings):
                 "Configure a variável de ambiente ou nos secrets do Streamlit Cloud."
             )
 
-        from src.embedding.voyage_embedder import VoyageEmbedder
+        from src.embedding.hybrid_embedder import HybridEmbedder
 
-        return VoyageEmbedder(
-            model=settings.embedding.models.general,
-            dimensions=settings.embedding.dimensions,
-            output_dtype=settings.embedding.output_dtype,
-            batch_size=settings.embedding.batch_size,
+        # Usar HybridEmbedder para compatibilidade com múltiplos modelos
+        # Durante a ingestão, chunks são embedados com modelos específicos por domínio
+        # Para busca, usamos o modelo legal (voyage-law-2) como padrão para
+        # documentos jurídicos, mas o HybridEmbedder pode detectar o domínio
+        return HybridEmbedder(
             api_key=voyage_api_key,
+            dimensions=settings.embedding.dimensions,
+            config=settings.embedding,
         )
     elif provider == "openai":
         openai_api_key = _get_env_or_setting("OPENAI_API_KEY", settings.openai_api_key)
