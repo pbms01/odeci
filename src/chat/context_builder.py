@@ -80,6 +80,7 @@ class ContextBuilder:
         )
 
         logger.info(f"Construindo contexto para: '{query[:50]}...'")
+        print(f"[ODECI ContextBuilder] Buscando em {collection}, max_sources={max_sources}")
 
         # Buscar documentos relevantes
         results = self._retriever.search(
@@ -91,6 +92,11 @@ class ContextBuilder:
             rerank=True,
             include_parent=include_parent,
         )
+
+        print(f"[ODECI ContextBuilder] Retriever retornou {len(results)} resultados")
+        if results:
+            for i, r in enumerate(results[:3]):
+                print(f"[ODECI ContextBuilder] Resultado {i+1}: score={r.final_score:.4f}, text={r.text[:50]}...")
 
         if not results:
             logger.warning("Nenhum resultado encontrado no retrieval")
@@ -111,6 +117,7 @@ class ContextBuilder:
             sources = self._truncate_sources(sources, max_tokens)
             total_tokens = self._calculate_tokens(sources)
 
+        print(f"[ODECI ContextBuilder] Contexto final: {len(sources)} fontes, ~{total_tokens} tokens")
         logger.info(f"Contexto construído: {len(sources)} fontes, ~{total_tokens} tokens")
 
         return RetrievalContext(

@@ -243,9 +243,11 @@ class HybridRetriever:
         include_parent = include_parent if include_parent is not None else self._include_parent
         
         logger.info(f"Buscando: '{query}' em {collection}")
+        print(f"[ODECI Retriever] Buscando: '{query[:50]}...' em {collection}, top_k={top_k}")
 
         # 1. Gerar embedding da query (modelo único - voyage-law-2)
         query_vector = self._embed_query(query)
+        print(f"[ODECI Retriever] Query embedada, dim={len(query_vector)}")
         logger.info(f"Query embedada, dim={len(query_vector)}")
 
         # 2. Buscar no vector store
@@ -273,8 +275,11 @@ class HybridRetriever:
             # Combinar resultados dos namespaces
             results = self._combine_results(results_by_namespace)
 
+        print(f"[ODECI Retriever] Busca retornou {len(results)} resultados do vector store")
+        if results:
+            print(f"[ODECI Retriever] Top 3 scores: {[r.score for r in results[:3]]}")
         logger.info(f"Encontrados {len(results)} resultados iniciais")
-        
+
         # 3. Reranking
         rerank_scores: dict[str, float] = {}
         
@@ -299,12 +304,15 @@ class HybridRetriever:
                     key=lambda r: rerank_scores.get(r.chunk_id, 0),
                     reverse=True
                 )[:top_k]
-                
+
+                print(f"[ODECI Retriever] Após rerank: {len(results)} resultados, rerank_scores={len(rerank_scores)}")
                 logger.debug("Reranking aplicado")
             except Exception as e:
+                print(f"[ODECI Retriever] ERRO no reranking: {e}")
                 logger.warning(f"Erro no reranking: {e}. Usando ordem original.")
         else:
             results = results[:top_k]
+            print(f"[ODECI Retriever] Sem rerank, resultados: {len(results)}")
         
         # 4. Contexto do parent
         if include_parent:
@@ -323,8 +331,9 @@ class HybridRetriever:
             for r in results
         ]
         
+        print(f"[ODECI Retriever] Retornando {len(final_results)} resultados finais")
         logger.info(f"Retornando {len(final_results)} resultados")
-        
+
         return final_results
     
     def search_similar(
