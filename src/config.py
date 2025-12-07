@@ -317,6 +317,16 @@ def load_yaml_config(config_path: Path | None = None) -> dict[str, Any]:
         return yaml.safe_load(f) or {}
 
 
+def clear_settings_cache() -> None:
+    """
+    Limpa o cache de get_settings.
+
+    Deve ser chamado após carregar secrets/env vars para forçar
+    recarregamento das configurações.
+    """
+    get_settings.cache_clear()
+
+
 @lru_cache
 def get_settings(config_path: str | None = None) -> Settings:
     """

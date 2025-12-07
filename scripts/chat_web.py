@@ -53,7 +53,7 @@ from src.chat.web.retriever_factory import (
     retriever_manager,
     RetrieverInitError,
 )
-from src.config import get_settings
+from src.config import clear_settings_cache, get_settings
 
 
 # ==============================================================================
@@ -310,6 +310,17 @@ def main():
     """Função principal da aplicação."""
     # Carregar secrets do Streamlit Cloud para env vars
     load_secrets_to_env()
+
+    # IMPORTANTE: Limpar cache de settings após carregar secrets
+    # para garantir que as credenciais sejam reconhecidas
+    clear_settings_cache()
+
+    # Resetar retriever_manager se já foi inicializado com credenciais erradas
+    if retriever_manager.is_initialized:
+        retriever_manager.reset()
+        # Também resetar chat_service que depende do retriever
+        if "chat_service" in st.session_state:
+            st.session_state.chat_service = None
 
     # Inicializar estado
     init_state()
