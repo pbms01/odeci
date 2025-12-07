@@ -556,6 +556,12 @@ def main():
                     if session.response_style != state.response_style:
                         service.change_response_style(session, state.response_style)
 
+                    # Debug: mostrar info de busca
+                    with st.expander("🔍 Debug: Informações de Busca", expanded=False):
+                        st.write(f"**Coleção:** {state.collection}")
+                        st.write(f"**Query:** {user_input}")
+                        st.write(f"**Retriever inicializado:** {retriever_manager.is_initialized}")
+
                     # Gerar resposta com streaming
                     full_response = ""
                     sources = []
@@ -584,6 +590,18 @@ def main():
 
                     # Remover cursor
                     message_placeholder.markdown(full_response)
+
+                    # Debug: mostrar resultado da busca
+                    with st.expander("🔍 Debug: Resultado da Busca", expanded=True):
+                        st.write(f"**Fontes encontradas:** {len(sources)}")
+                        if sources:
+                            for i, src in enumerate(sources[:3]):
+                                if hasattr(src, 'text'):
+                                    st.write(f"Fonte {i+1}: {src.text[:100]}...")
+                                else:
+                                    st.write(f"Fonte {i+1}: {str(src)[:100]}...")
+                        else:
+                            st.warning("Nenhuma fonte retornada pelo retriever!")
 
                     # Mostrar fontes
                     if state.show_sources and sources:
