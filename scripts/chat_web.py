@@ -29,8 +29,8 @@ sys.path.insert(0, str(ROOT_DIR))
 import streamlit as st
 
 # Versão do deploy - atualizar a cada mudança significativa
-APP_VERSION = "v1.0.2-fix"
-BUILD_ID = "2024-12-07T18:45"  # Timestamp do build
+APP_VERSION = "v1.0.3-reset"
+BUILD_ID = "2024-12-07T18:50"  # Timestamp do build
 
 from src.chat.models import ChatConfig, ResponseStyle
 from src.chat.service import ChatService
@@ -470,6 +470,19 @@ def main():
         # Limpar conversa
         if st.button("🗑️ Limpar Conversa", use_container_width=True):
             clear_messages()
+            st.rerun()
+
+        # Reset completo do sistema
+        if st.button("🔄 Reset Sistema", use_container_width=True):
+            # Limpar tudo: mensagens, chat_service, retriever
+            clear_messages()
+            if "chat_service" in st.session_state:
+                st.session_state.chat_service = None
+            if "session" in st.session_state:
+                st.session_state.session = None
+            retriever_manager.reset()
+            clear_settings_cache()
+            st.success("Sistema resetado!")
             st.rerun()
 
         # Diagnóstico de Busca
