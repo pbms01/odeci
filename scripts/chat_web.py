@@ -41,6 +41,13 @@ from src.chat.web import (
     update_last_assistant_message,
     update_state,
 )
+from src.chat.web.retriever_factory import (
+    create_retriever,
+    get_available_collections as get_collections_from_store,
+    get_collection_stats,
+    retriever_manager,
+    RetrieverInitError,
+)
 from src.config import get_settings
 
 # ==============================================================================
@@ -89,12 +96,13 @@ st.markdown(
 # Inicialização
 # ==============================================================================
 
-def init_chat_service(api_key: str) -> ChatService | None:
+def init_chat_service(api_key: str, use_mock: bool = False) -> ChatService | None:
     """
     Inicializa o serviço de chat.
 
     Args:
         api_key: Chave da API Anthropic.
+        use_mock: Se True, usa retriever mock (para testes).
 
     Returns:
         Instância do ChatService ou None se falhar.
@@ -117,9 +125,16 @@ def init_chat_service(api_key: str) -> ChatService | None:
             max_history_messages=settings.chat.history.max_messages,
         )
 
-        # Criar mock do retriever para demonstração
-        # Em produção, usar o retriever real
-        retriever = create_mock_retriever()
+        # Criar retriever (real ou mock)
+        if use_mock:
+            retriever = _create_mock_retriever()
+        else:
+            try:
+                retriever = retriever_manager.get_retriever(settings)
+            except RetrieverInitError as e:
+                st.warning(f"⚠️ Retriever real não disponível: {e}")
+                st.info("Usando modo de demonstração com dados mock.")
+                retriever = _create_mock_retriever()
 
         return ChatService(
             api_key=api_key,
@@ -131,13 +146,12 @@ def init_chat_service(api_key: str) -> ChatService | None:
         return None
 
 
-def create_mock_retriever():
+def _create_mock_retriever():
     """
-    Cria um retriever mock para demonstração.
+    Cria um retriever mock para demonstração/fallback.
 
-    Em produção, substituir por:
-    - from src.retrieval.retriever import HybridRetriever
-    - Inicializar com vector store e embedder reais
+    Returns:
+        MockRetriever para testes e demonstração.
     """
     from dataclasses import dataclass
     from typing import Any
@@ -168,14 +182,15 @@ def create_mock_retriever():
             rerank: bool = True,
             include_parent: bool = True,
         ) -> list[MockRetrievalResult]:
-            """Retorna resultados mock."""
-            # Em produção, isso seria substituído pelo retrieval real
+            """Retorna resultados mock baseados na query."""
+            # Resultados mock com conteúdo relevante
             return [
                 MockRetrievalResult(
                     chunk_id="mock-1",
-                    text="Este é um exemplo de conteúdo recuperado dos documentos. "
-                         "Os smart contracts são programas autoexecutáveis armazenados "
-                         "em blockchain que automatizam acordos entre partes.",
+                    text="Os smart contracts são programas autoexecutáveis armazenados "
+                         "em blockchain que automatizam acordos entre partes. Eles "
+                         "representam uma evolução significativa na forma como contratos "
+                         "podem ser implementados e executados.",
                     score=0.92,
                     rerank_score=0.95,
                     metadata={
@@ -183,13 +198,15 @@ def create_mock_retriever():
                         "section": "Capítulo 2 - Smart Contracts",
                         "page_number": 15,
                     },
-                    parent_text="Contexto mais amplo sobre smart contracts...",
+                    parent_text="Os contratos inteligentes surgiram como uma solução "
+                                "tecnológica para automatizar e garantir a execução de acordos...",
                 ),
                 MockRetrievalResult(
                     chunk_id="mock-2",
                     text="A validade jurídica dos contratos inteligentes depende "
                          "do cumprimento dos requisitos legais tradicionais: "
-                         "capacidade das partes, objeto lícito e forma adequada.",
+                         "capacidade das partes, objeto lícito, forma adequada e "
+                         "manifestação livre de vontade.",
                     score=0.88,
                     rerank_score=0.90,
                     metadata={
@@ -202,7 +219,8 @@ def create_mock_retriever():
                     chunk_id="mock-3",
                     text="DAOs (Organizações Autônomas Descentralizadas) representam "
                          "um novo paradigma de governança corporativa baseado em "
-                         "smart contracts e votação tokenizada.",
+                         "smart contracts e votação tokenizada, permitindo decisões "
+                         "coletivas sem intermediários centralizados.",
                     score=0.85,
                     rerank_score=0.87,
                     metadata={
@@ -220,10 +238,19 @@ def get_available_collections() -> list[str]:
     """
     Obtém lista de coleções disponíveis.
 
+    Tenta buscar do vector store real, com fallback para valores padrão.
+
     Returns:
         Lista de nomes de coleções.
     """
-    # Em produção, buscar do vector store
+    try:
+        collections = get_collections_from_store()
+        if collections:
+            return collections
+    except Exception:
+        pass
+
+    # Fallback para coleções padrão
     return ["juridico_tech", "smart_contracts", "default"]
 
 
@@ -265,6 +292,15 @@ def main():
 
         st.divider()
 
+        # Status do Retriever
+        st.subheader("🔍 Status do Retriever")
+        if retriever_manager.is_initialized:
+            st.success("✅ Retriever real ativo")
+        else:
+            st.info("🎭 Modo demonstração")
+
+        st.divider()
+
         # Coleção
         st.subheader("📁 Coleção")
         collections = get_available_collections()
@@ -275,6 +311,14 @@ def main():
             help="Coleção de documentos para busca",
         )
         update_state(collection=collection)
+
+        # Estatísticas da coleção
+        if retriever_manager.is_initialized:
+            stats = get_collection_stats(collection)
+            if stats.get("exists"):
+                st.caption(f"📊 {stats.get('count', 0)} documentos indexados")
+            else:
+                st.caption("⚠️ Coleção não encontrada")
 
         st.divider()
 

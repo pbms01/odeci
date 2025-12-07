@@ -18,6 +18,15 @@ from src.chat.web.components import (
     render_warning,
     render_welcome_message,
 )
+from src.chat.web.retriever_factory import (
+    RetrieverInitError,
+    RetrieverManager,
+    check_collection_exists,
+    create_retriever,
+    get_available_collections,
+    get_collection_stats,
+    retriever_manager,
+)
 from src.chat.web.state import (
     WebState,
     add_assistant_message,
@@ -56,4 +65,12 @@ __all__ = [
     "render_processing_indicator",
     "render_welcome_message",
     "render_api_key_input",
+    # Retriever Factory
+    "create_retriever",
+    "get_available_collections",
+    "get_collection_stats",
+    "check_collection_exists",
+    "retriever_manager",
+    "RetrieverManager",
+    "RetrieverInitError",
 ]
