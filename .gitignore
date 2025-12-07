@@ -111,6 +111,7 @@ outputs/
 secrets.yaml
 *.pem
 *.key
+.streamlit/secrets.toml
 
 # Jupyter
 .ipynb_checkpoints/

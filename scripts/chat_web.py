@@ -9,6 +9,11 @@ Uso:
 
     # ou com porta específica
     streamlit run scripts/chat_web.py --server.port 8502
+
+Deploy no Streamlit Cloud:
+    1. Conecte o repositório GitHub
+    2. Configure os secrets no painel do Streamlit Cloud
+    3. Aponte para scripts/chat_web.py como arquivo principal
 """
 
 from __future__ import annotations
@@ -49,6 +54,53 @@ from src.chat.web.retriever_factory import (
     RetrieverInitError,
 )
 from src.config import get_settings
+
+
+# ==============================================================================
+# Helpers para Secrets (Streamlit Cloud + Env Vars)
+# ==============================================================================
+
+def get_secret(key: str, default: str | None = None) -> str | None:
+    """
+    Obtém um secret do Streamlit Cloud ou variáveis de ambiente.
+
+    Args:
+        key: Nome da chave.
+        default: Valor padrão se não encontrado.
+
+    Returns:
+        Valor do secret ou default.
+    """
+    # Tentar st.secrets primeiro (Streamlit Cloud)
+    try:
+        if key in st.secrets:
+            return st.secrets[key]
+    except Exception:
+        pass
+
+    # Fallback para variáveis de ambiente
+    return os.getenv(key, default)
+
+
+def load_secrets_to_env() -> None:
+    """
+    Carrega secrets do Streamlit Cloud para variáveis de ambiente.
+
+    Isso permite que o restante do código use os.getenv normalmente.
+    """
+    secret_keys = [
+        "ANTHROPIC_API_KEY",
+        "VOYAGE_API_KEY",
+        "COHERE_API_KEY",
+        "QDRANT_URL",
+        "QDRANT_API_KEY",
+        "OPENAI_API_KEY",
+    ]
+
+    for key in secret_keys:
+        value = get_secret(key)
+        if value and not os.getenv(key):
+            os.environ[key] = value
 
 # ==============================================================================
 # Configuração da Página
@@ -260,6 +312,9 @@ def get_available_collections() -> list[str]:
 
 def main():
     """Função principal da aplicação."""
+    # Carregar secrets do Streamlit Cloud para env vars
+    load_secrets_to_env()
+
     # Inicializar estado
     init_state()
     state = get_state()
@@ -275,8 +330,8 @@ def main():
     with st.sidebar:
         st.header("⚙️ Configurações")
 
-        # API Key
-        api_key = settings.anthropic_api_key or os.getenv("ANTHROPIC_API_KEY")
+        # API Key (busca de st.secrets, env vars ou settings)
+        api_key = get_secret("ANTHROPIC_API_KEY") or settings.anthropic_api_key
 
         if not api_key:
             st.warning("API Key não configurada")
