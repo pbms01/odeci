@@ -80,7 +80,10 @@ class ContextBuilder:
         )
 
         logger.info(f"Construindo contexto para: '{query[:50]}...'")
-        print(f"[ODECI ContextBuilder] Buscando em {collection}, max_sources={max_sources}")
+        print(f"[ODECI ContextBuilder] === INÍCIO DA BUSCA ===")
+        print(f"[ODECI ContextBuilder] Query completa: '{query}'")
+        print(f"[ODECI ContextBuilder] Collection: {collection}, max_sources={max_sources}")
+        print(f"[ODECI ContextBuilder] Retriever type: {type(self._retriever).__name__}")
 
         # Buscar documentos relevantes
         results = self._retriever.search(
@@ -94,6 +97,7 @@ class ContextBuilder:
         )
 
         print(f"[ODECI ContextBuilder] Retriever retornou {len(results)} resultados")
+        print(f"[ODECI ContextBuilder] === FIM DA BUSCA ===")
         if results:
             for i, r in enumerate(results[:3]):
                 print(f"[ODECI ContextBuilder] Resultado {i+1}: score={r.final_score:.4f}, text={r.text[:50]}...")

@@ -622,7 +622,28 @@ def main():
                         st.write(f"**Query:** {user_input}")
                         st.write(f"**Retriever inicializado:** {retriever_manager.is_initialized}")
 
-                        # Testar busca diretamente
+                        # Mostrar tipo do retriever
+                        if retriever_manager.is_initialized:
+                            retriever = retriever_manager._retriever
+                            st.write(f"**Tipo do retriever:** {type(retriever).__name__}")
+
+                            # Testar busca diretamente pelo retriever
+                            try:
+                                test_results = retriever.search(
+                                    query=user_input,
+                                    collection=state.collection,
+                                    top_k=5,
+                                    rerank=False,  # Sem rerank para teste rápido
+                                    include_parent=False,
+                                )
+                                st.write(f"**Teste retriever (sem rerank):** {len(test_results)} resultados")
+                                if test_results:
+                                    for i, r in enumerate(test_results[:3]):
+                                        st.caption(f"{i+1}. Score {r.score:.4f}: {r.text[:80]}...")
+                            except Exception as e:
+                                st.error(f"Erro no teste do retriever: {e}")
+
+                        # Testar vector store diretamente
                         try:
                             from src.chat.web.retriever_factory import _create_vector_store
                             settings = get_settings()
