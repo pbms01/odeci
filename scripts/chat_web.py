@@ -28,6 +28,10 @@ sys.path.insert(0, str(ROOT_DIR))
 
 import streamlit as st
 
+# Versão do deploy - atualizar a cada mudança significativa
+APP_VERSION = "v1.0.1-debug"
+BUILD_ID = "2024-12-07T18:30"  # Timestamp do build
+
 from src.chat.models import ChatConfig, ResponseStyle
 from src.chat.service import ChatService
 from src.chat.web import (
@@ -344,6 +348,9 @@ def main():
     # Sidebar com configurações
     with st.sidebar:
         st.header("⚙️ Configurações")
+
+        # Marcador de versão para debug
+        st.caption(f"🏷️ {APP_VERSION} | {BUILD_ID}")
 
         # API Key (busca de st.secrets, env vars ou settings)
         api_key = get_secret("ANTHROPIC_API_KEY") or settings.anthropic_api_key
