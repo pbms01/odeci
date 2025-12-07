@@ -27,7 +27,7 @@ from src.models.document import Document, DocumentMetadata, DocumentSection
 from src.models.chunk import Chunk, ChunkCollection, ChunkLevel
 from src.chunking.hierarchical import HierarchicalChunker
 from src.chunking.domain_classifier import DomainClassifier
-from src.embedding.hybrid_embedder import HybridEmbedder
+from src.embedding.unified_embedder import UnifiedEmbedder
 from src.embedding.voyage_embedder import VoyageEmbedder
 from src.storage.vector_store import QdrantVectorStore, create_vector_store
 from src.retrieval.retriever import HybridRetriever, RetrievalResult
@@ -280,14 +280,14 @@ class ODECIPipeline:
             classifier=self._classifier,
         )
         
-        # Embedder
+        # Embedder (modelo único para todos os domínios)
         if self.settings.is_voyage_configured():
-            self._embedder = HybridEmbedder(
+            self._embedder = UnifiedEmbedder(
                 api_key=self.settings.voyage_api_key,
+                model="voyage-3-large",  # Modelo único generalista
                 dimensions=self.settings.embedding.dimensions,
-                config=self.settings.embedding,
             )
-            logger.info("Usando Voyage AI para embeddings")
+            logger.info("Usando Voyage AI (voyage-3-large) para embeddings")
         else:
             logger.warning(
                 "Voyage AI não configurado. "
