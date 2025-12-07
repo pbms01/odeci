@@ -189,10 +189,10 @@ retrieval:
   strategy: hybrid
   
   # Número de resultados por namespace
-  top_k_per_namespace: 20
-  
-  # Número final de resultados
-  final_top_k: 10
+  top_k_per_namespace: 30
+
+  # Número final de resultados (após reranking)
+  final_top_k: 15
   
   # Peso para busca híbrida (dense vs sparse)
   hybrid_alpha: 0.7  # 0.7 = 70% dense, 30% sparse
@@ -293,9 +293,9 @@ chat:
   # Configurações de contexto
   context:
     # Máximo de tokens de contexto dos documentos
-    max_tokens: 12000
+    max_tokens: 16000
     # Número máximo de fontes a incluir
-    max_sources: 10
+    max_sources: 15
     # Incluir contexto do parent chunk
     include_parent: true
 
