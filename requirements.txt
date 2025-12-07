@@ -29,6 +29,13 @@ openai>=1.12.0
 cohere>=5.0.0
 sentence-transformers>=2.3.0
 
+# LLM / Chat
+anthropic>=0.40.0
+
+# Web Interface
+streamlit>=1.31.0
+streamlit-chat>=0.1.1
+
 # Vector Stores
 qdrant-client>=1.7.0
 chromadb>=0.4.22

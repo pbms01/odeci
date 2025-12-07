@@ -263,15 +263,68 @@ logging:
 # ------------------------------------------------------------------------------
 cache:
   enabled: true
-  
+
   # Backend: memory, redis, disk
   backend: disk
-  
+
   # TTL em segundos (24 horas)
   ttl: 86400
-  
+
   # Diretório para cache em disco
   path: ./data/cache
-  
+
   # Tamanho máximo (MB)
   max_size_mb: 1000
+
+# ------------------------------------------------------------------------------
+# Chat RAG (Retrieval-Augmented Generation)
+# ------------------------------------------------------------------------------
+chat:
+  # Modelo Claude a utilizar
+  # Opções: claude-sonnet-4-5-20250514, claude-3-opus-20240229
+  model: claude-sonnet-4-5-20250514
+
+  # Limite de tokens na resposta
+  max_tokens: 4096
+
+  # Temperatura de geração (0.0 = determinístico, 1.0 = criativo)
+  temperature: 0.3
+
+  # Configurações de contexto
+  context:
+    # Máximo de tokens de contexto dos documentos
+    max_tokens: 8000
+    # Número máximo de fontes a incluir
+    max_sources: 5
+    # Incluir contexto do parent chunk
+    include_parent: true
+
+  # Estilo de resposta padrão: concise, detailed, technical
+  response_style: detailed
+
+  # Incluir seção de fontes/citações na resposta
+  include_sources: true
+
+  # Gerar perguntas de follow-up
+  include_follow_up: true
+
+  # Streaming de respostas
+  stream: true
+
+  # Histórico de conversa
+  history:
+    # Máximo de mensagens a manter no contexto
+    max_messages: 10
+    # Persistir sessões
+    persist_sessions: false
+
+  # Interface Web
+  web:
+    # Título da aplicação
+    title: "ODECI Chat"
+    # Descrição
+    description: "Assistente especializado em documentos jurídicos e tecnológicos"
+    # Tema: light, dark, auto
+    theme: auto
+    # Porta padrão
+    port: 8501

@@ -180,12 +180,51 @@ class LoggingConfig(BaseModel):
 
 class CacheConfig(BaseModel):
     """Configuração de cache."""
-    
+
     enabled: bool = True
     backend: Literal["memory", "redis", "disk"] = "disk"
     ttl: int = Field(default=86400, ge=60)
     path: str = "./data/cache"
     max_size_mb: int = Field(default=1000, ge=100)
+
+
+class ChatContextConfig(BaseModel):
+    """Configuração de contexto do chat."""
+
+    max_tokens: int = Field(default=8000, ge=1000, le=32000)
+    max_sources: int = Field(default=5, ge=1, le=20)
+    include_parent: bool = True
+
+
+class ChatHistoryConfig(BaseModel):
+    """Configuração de histórico do chat."""
+
+    max_messages: int = Field(default=10, ge=1, le=50)
+    persist_sessions: bool = False
+
+
+class ChatWebConfig(BaseModel):
+    """Configuração da interface web do chat."""
+
+    title: str = "ODECI Chat"
+    description: str = "Assistente especializado em documentos jurídicos e tecnológicos"
+    theme: Literal["light", "dark", "auto"] = "auto"
+    port: int = Field(default=8501, ge=1024, le=65535)
+
+
+class ChatConfig(BaseModel):
+    """Configuração do módulo de chat RAG."""
+
+    model: str = "claude-sonnet-4-5-20250514"
+    max_tokens: int = Field(default=4096, ge=256, le=8192)
+    temperature: float = Field(default=0.3, ge=0.0, le=1.0)
+    context: ChatContextConfig = Field(default_factory=ChatContextConfig)
+    response_style: Literal["concise", "detailed", "technical"] = "detailed"
+    include_sources: bool = True
+    include_follow_up: bool = True
+    stream: bool = True
+    history: ChatHistoryConfig = Field(default_factory=ChatHistoryConfig)
+    web: ChatWebConfig = Field(default_factory=ChatWebConfig)
 
 
 # ==============================================================================
@@ -210,6 +249,7 @@ class Settings(BaseSettings):
     voyage_api_key: str | None = Field(default=None, alias="VOYAGE_API_KEY")
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
     cohere_api_key: str | None = Field(default=None, alias="COHERE_API_KEY")
+    anthropic_api_key: str | None = Field(default=None, alias="ANTHROPIC_API_KEY")
     qdrant_api_key: str | None = Field(default=None, alias="QDRANT_API_KEY")
     qdrant_url: str | None = Field(default=None, alias="QDRANT_URL")
     
@@ -230,26 +270,31 @@ class Settings(BaseSettings):
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     cache: CacheConfig = Field(default_factory=CacheConfig)
+    chat: ChatConfig = Field(default_factory=ChatConfig)
     
-    @field_validator("voyage_api_key", "openai_api_key", "cohere_api_key")
+    @field_validator("voyage_api_key", "openai_api_key", "cohere_api_key", "anthropic_api_key")
     @classmethod
     def validate_api_key(cls, v: str | None) -> str | None:
         """Valida que API keys não são placeholders."""
         if v and "your_" in v.lower():
             return None
         return v
-    
+
     def is_voyage_configured(self) -> bool:
         """Verifica se Voyage AI está configurado."""
         return self.voyage_api_key is not None
-    
+
     def is_openai_configured(self) -> bool:
         """Verifica se OpenAI está configurado."""
         return self.openai_api_key is not None
-    
+
     def is_cohere_configured(self) -> bool:
         """Verifica se Cohere está configurado."""
         return self.cohere_api_key is not None
+
+    def is_anthropic_configured(self) -> bool:
+        """Verifica se Anthropic está configurado."""
+        return self.anthropic_api_key is not None
 
 
 def load_yaml_config(config_path: Path | None = None) -> dict[str, Any]:
