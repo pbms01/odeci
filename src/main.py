@@ -299,6 +299,8 @@ class ODECIPipeline:
         self._vector_store = create_vector_store(
             backend=self.settings.vector_store.backend,
             path=self.settings.vector_store.qdrant.path,
+            url=self.settings.qdrant_url,
+            api_key=self.settings.qdrant_api_key,
         )
         logger.info(f"Vector store: {self.settings.vector_store.backend}")
         
