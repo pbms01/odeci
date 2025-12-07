@@ -260,8 +260,10 @@ class HybridRetriever:
         # 2. Buscar com cada modelo e combinar resultados
         all_results: dict[str, SearchResult] = {}
 
+        search_debug = []  # Para diagnóstico
         for model, query_vector in query_embeddings.items():
             logger.info(f"Buscando com modelo {model}, vetor dim={len(query_vector)}")
+            print(f"[ODECI Search] Buscando com {model}, dim={len(query_vector)}, top_k={self._top_k_per_namespace}")
             try:
                 if namespaces is None:
                     # Busca geral sem namespace
@@ -287,6 +289,11 @@ class HybridRetriever:
                     # Combinar resultados dos namespaces
                     model_results = self._combine_results(results_by_namespace)
 
+                # Diagnóstico detalhado
+                scores = [r.score for r in model_results[:5]] if model_results else []
+                debug_msg = f"{model}: {len(model_results)} resultados, scores={scores}"
+                search_debug.append(debug_msg)
+                print(f"[ODECI Search] {debug_msg}")
                 logger.info(f"Modelo {model}: {len(model_results)} resultados encontrados")
 
                 # Adicionar resultados, mantendo o melhor score se duplicado
@@ -304,7 +311,15 @@ class HybridRetriever:
         # Converter para lista ordenada por score
         results = sorted(all_results.values(), key=lambda r: r.score, reverse=True)
 
+        # Salvar debug info para acesso externo
+        self._last_search_debug = {
+            "models": list(query_embeddings.keys()),
+            "results_per_model": search_debug,
+            "total_results": len(results),
+        }
+
         print(f"[ODECI Search] Total de resultados combinados: {len(results)}")
+        print(f"[ODECI Search] Debug por modelo: {search_debug}")
         logger.info(f"Encontrados {len(results)} resultados iniciais")
         
         # 3. Reranking
