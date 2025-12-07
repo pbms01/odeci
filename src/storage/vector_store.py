@@ -191,46 +191,46 @@ class QdrantVectorStore(BaseVectorStore):
     ) -> list[SearchResult]:
         """
         Busca vetores similares.
-        
+
         Args:
             collection: Nome da coleção.
             query_vector: Vetor de query.
             top_k: Número de resultados.
             namespace: Namespace para filtrar.
             filter_metadata: Filtros adicionais.
-            
+
         Returns:
             Lista de resultados ordenados por similaridade.
         """
         from qdrant_client.models import Filter, FieldCondition, MatchValue
-        
+
         # Construir filtro
         conditions = []
-        
+
         if namespace:
             conditions.append(FieldCondition(
                 key="namespace",
                 match=MatchValue(value=namespace),
             ))
-        
+
         if filter_metadata:
             for key, value in filter_metadata.items():
                 conditions.append(FieldCondition(
                     key=key,
                     match=MatchValue(value=value),
                 ))
-        
+
         query_filter = Filter(must=conditions) if conditions else None
-        
-        # Executar busca
-        results = self._client.search(
+
+        # Executar busca (qdrant-client v1.7+ usa query_points)
+        results = self._client.query_points(
             collection_name=collection,
-            query_vector=query_vector,
+            query=query_vector,
             limit=top_k,
             query_filter=query_filter,
             with_payload=True,
-        )
-        
+        ).points
+
         # Converter resultados
         search_results = []
         for result in results:
@@ -241,7 +241,7 @@ class QdrantVectorStore(BaseVectorStore):
                 score=result.score,
                 metadata=payload,
             ))
-        
+
         return search_results
     
     def get_chunk_by_id(
