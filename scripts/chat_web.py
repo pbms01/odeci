@@ -97,10 +97,18 @@ def load_secrets_to_env() -> None:
         "OPENAI_API_KEY",
     ]
 
+    loaded_keys = []
     for key in secret_keys:
         value = get_secret(key)
         if value and not os.getenv(key):
             os.environ[key] = value
+            loaded_keys.append(key)
+
+    # Log para debug (visível nos logs do Streamlit Cloud)
+    if loaded_keys:
+        print(f"[ODECI] Secrets carregados: {loaded_keys}")
+    else:
+        print("[ODECI] Nenhum secret novo carregado (já existem ou não configurados)")
 
 # ==============================================================================
 # Configuração da Página
@@ -356,23 +364,50 @@ def main():
 
         # Status do Retriever
         st.subheader("🔍 Status do Retriever")
-        if retriever_manager.is_initialized:
-            st.success("✅ Retriever real ativo")
+
+        # Verificar credenciais
+        qdrant_url = os.getenv("QDRANT_URL")
+        qdrant_key = os.getenv("QDRANT_API_KEY")
+        voyage_key = os.getenv("VOYAGE_API_KEY")
+
+        if qdrant_url and qdrant_key and voyage_key:
+            st.success("✅ Credenciais configuradas")
         else:
-            st.info("🎭 Modo demonstração")
+            missing = []
+            if not qdrant_url:
+                missing.append("QDRANT_URL")
+            if not qdrant_key:
+                missing.append("QDRANT_API_KEY")
+            if not voyage_key:
+                missing.append("VOYAGE_API_KEY")
+            st.warning(f"⚠️ Faltam: {', '.join(missing)}")
+
+        if retriever_manager.is_initialized:
+            st.success("✅ Retriever ativo")
+        else:
+            st.info("🔄 Retriever será inicializado na primeira pergunta")
 
         st.divider()
 
         # Coleção
         st.subheader("📁 Coleção")
-        collections = get_available_collections()
+
+        # Tentar listar coleções com diagnóstico
+        try:
+            collections = get_available_collections()
+            if collections:
+                st.caption(f"Encontradas: {len(collections)} coleção(ões)")
+        except Exception as e:
+            st.error(f"Erro ao conectar: {e}")
+            collections = []
 
         if not collections:
-            st.warning("⚠️ Nenhuma coleção encontrada no Qdrant")
-            st.caption(
-                "É necessário ingerir documentos primeiro para criar coleções. "
-                "Execute o pipeline de ingestão localmente."
-            )
+            if qdrant_url and qdrant_key:
+                st.warning("⚠️ Nenhuma coleção encontrada no Qdrant Cloud")
+                st.caption("Verifique se os documentos foram ingeridos corretamente.")
+            else:
+                st.warning("⚠️ Credenciais do Qdrant não configuradas")
+                st.caption("Configure QDRANT_URL e QDRANT_API_KEY nos secrets.")
             collection = None
             update_state(collection=None)
         else:
