@@ -288,22 +288,18 @@ def _create_mock_retriever():
 
 def get_available_collections() -> list[str]:
     """
-    Obtém lista de coleções disponíveis.
+    Obtém lista de coleções disponíveis no Qdrant.
 
-    Tenta buscar do vector store real, com fallback para valores padrão.
+    Retorna apenas coleções que existem no vector store.
+    Se não houver coleções, retorna lista vazia.
 
     Returns:
-        Lista de nomes de coleções.
+        Lista de nomes de coleções existentes.
     """
     try:
-        collections = get_collections_from_store()
-        if collections:
-            return collections
+        return get_collections_from_store()
     except Exception:
-        pass
-
-    # Fallback para coleções padrão
-    return ["juridico_tech", "smart_contracts", "default"]
+        return []
 
 
 # ==============================================================================
@@ -359,21 +355,31 @@ def main():
         # Coleção
         st.subheader("📁 Coleção")
         collections = get_available_collections()
-        collection = st.selectbox(
-            "Selecione a coleção",
-            options=collections,
-            index=0,
-            help="Coleção de documentos para busca",
-        )
-        update_state(collection=collection)
 
-        # Estatísticas da coleção
-        if retriever_manager.is_initialized:
-            stats = get_collection_stats(collection)
-            if stats.get("exists"):
-                st.caption(f"📊 {stats.get('count', 0)} documentos indexados")
-            else:
-                st.caption("⚠️ Coleção não encontrada")
+        if not collections:
+            st.warning("⚠️ Nenhuma coleção encontrada no Qdrant")
+            st.caption(
+                "É necessário ingerir documentos primeiro para criar coleções. "
+                "Execute o pipeline de ingestão localmente."
+            )
+            collection = None
+            update_state(collection=None)
+        else:
+            collection = st.selectbox(
+                "Selecione a coleção",
+                options=collections,
+                index=0,
+                help="Coleção de documentos para busca",
+            )
+            update_state(collection=collection)
+
+            # Estatísticas da coleção
+            if retriever_manager.is_initialized and collection:
+                stats = get_collection_stats(collection)
+                if stats.get("exists"):
+                    st.caption(f"📊 {stats.get('count', 0)} documentos indexados")
+                else:
+                    st.caption("⚠️ Coleção não encontrada")
 
         st.divider()
 
@@ -428,6 +434,21 @@ def main():
     if not api_key:
         render_welcome_message()
         st.info("👆 Configure sua API Key na barra lateral para começar.")
+        return
+
+    # Verificar se há coleções disponíveis
+    if not state.collection:
+        render_welcome_message()
+        st.warning(
+            "⚠️ Nenhuma coleção de documentos disponível. "
+            "É necessário ingerir documentos no Qdrant para usar o chat RAG."
+        )
+        st.info(
+            "Para ingerir documentos, execute o pipeline de ingestão localmente:\n\n"
+            "```bash\n"
+            "python scripts/ingest.py --document seu_documento.docx\n"
+            "```"
+        )
         return
 
     # Inicializar serviço de chat

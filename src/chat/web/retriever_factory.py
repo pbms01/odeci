@@ -208,11 +208,15 @@ def get_available_collections(settings: Settings | None = None) -> list[str]:
     """
     Lista coleções disponíveis no vector store.
 
+    Busca apenas coleções que realmente existem no Qdrant Cloud.
+    Retorna lista vazia se não houver coleções (usuário precisa
+    ingerir documentos primeiro).
+
     Args:
         settings: Configurações.
 
     Returns:
-        Lista de nomes de coleções.
+        Lista de nomes de coleções existentes.
     """
     from src.config import get_settings
 
@@ -221,24 +225,22 @@ def get_available_collections(settings: Settings | None = None) -> list[str]:
     try:
         vector_store = _create_vector_store(settings)
 
-        # Tentar listar coleções do Qdrant
+        # Listar coleções reais do Qdrant
         if hasattr(vector_store, '_client'):
             try:
                 collections = vector_store._client.get_collections().collections
                 names = [c.name for c in collections]
-                if names:
-                    return names
-            except Exception:
-                pass
+                logger.info(f"Coleções encontradas no Qdrant: {names}")
+                return names
+            except Exception as e:
+                logger.warning(f"Erro ao listar coleções: {e}")
+                return []
 
-        # Fallback para coleções padrão da configuração
-        prefix = settings.vector_store.collections.prefix
-        namespaces = settings.vector_store.collections.namespaces
-        return [f"{prefix}{ns}" for ns in namespaces]
+        return []
 
     except Exception as e:
-        logger.warning(f"Erro ao listar coleções: {e}")
-        return ["default", "juridico_tech"]
+        logger.warning(f"Erro ao conectar ao vector store: {e}")
+        return []
 
 
 def check_collection_exists(
