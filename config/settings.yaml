@@ -281,8 +281,8 @@ cache:
 # ------------------------------------------------------------------------------
 chat:
   # Modelo Claude a utilizar
-  # Opções: claude-sonnet-4-5-20250514, claude-3-opus-20240229
-  model: claude-sonnet-4-5-20250514
+  # Opções: claude-sonnet-4-5-20250929, claude-3-opus-20240229
+  model: claude-sonnet-4-5-20250929
 
   # Limite de tokens na resposta
   max_tokens: 4096

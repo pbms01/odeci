@@ -215,7 +215,7 @@ class ChatWebConfig(BaseModel):
 class ChatConfig(BaseModel):
     """Configuração do módulo de chat RAG."""
 
-    model: str = "claude-sonnet-4-5-20250514"
+    model: str = "claude-sonnet-4-5-20250929"
     max_tokens: int = Field(default=4096, ge=256, le=8192)
     temperature: float = Field(default=0.3, ge=0.0, le=1.0)
     context: ChatContextConfig = Field(default_factory=ChatContextConfig)

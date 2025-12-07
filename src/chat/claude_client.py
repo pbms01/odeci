@@ -39,7 +39,7 @@ class ClaudeClient:
     def __init__(
         self,
         api_key: str,
-        model: str = "claude-sonnet-4-5-20250514",
+        model: str = "claude-sonnet-4-5-20250929",
         config: ChatConfig | None = None,
     ) -> None:
         """
@@ -258,7 +258,7 @@ class ClaudeClientFactory:
     def create(
         cls,
         api_key: str,
-        model: str = "claude-sonnet-4-5-20250514",
+        model: str = "claude-sonnet-4-5-20250929",
         config: ChatConfig | None = None,
     ) -> ClaudeClient:
         """
