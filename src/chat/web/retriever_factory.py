@@ -22,6 +22,22 @@ class RetrieverInitError(Exception):
     pass
 
 
+def _get_env_or_setting(key: str, settings_value: str | None) -> str | None:
+    """
+    Obtém valor de variável de ambiente ou do settings.
+
+    Prioriza variável de ambiente para funcionar com Streamlit Cloud.
+
+    Args:
+        key: Nome da variável de ambiente.
+        settings_value: Valor do settings como fallback.
+
+    Returns:
+        Valor encontrado ou None.
+    """
+    return os.getenv(key) or settings_value
+
+
 def create_retriever(settings: Settings | None = None):
     """
     Cria instância completa do HybridRetriever.
@@ -84,12 +100,16 @@ def _create_vector_store(settings: Settings):
     backend = settings.vector_store.backend
     logger.info(f"Criando vector store: {backend}")
 
+    # Obter credenciais do ambiente (prioridade) ou settings
+    qdrant_url = _get_env_or_setting("QDRANT_URL", settings.qdrant_url)
+    qdrant_api_key = _get_env_or_setting("QDRANT_API_KEY", settings.qdrant_api_key)
+
     if backend == "qdrant":
         return create_vector_store(
             backend="qdrant",
             path=settings.vector_store.qdrant.path,
-            url=settings.qdrant_url,
-            api_key=settings.qdrant_api_key,
+            url=qdrant_url,
+            api_key=qdrant_api_key,
         )
     elif backend == "chroma":
         chroma_path = getattr(settings.vector_store, 'chroma', None)
@@ -115,11 +135,14 @@ def _create_embedder(settings: Settings):
     provider = settings.embedding.provider
     logger.info(f"Criando embedder: {provider}")
 
+    # Obter API key do ambiente (prioridade) ou settings
+    voyage_api_key = _get_env_or_setting("VOYAGE_API_KEY", settings.voyage_api_key)
+
     if provider == "voyage":
-        if not settings.voyage_api_key:
+        if not voyage_api_key:
             raise RetrieverInitError(
                 "VOYAGE_API_KEY não configurada. "
-                "Configure a variável de ambiente ou no .env"
+                "Configure a variável de ambiente ou nos secrets do Streamlit Cloud."
             )
 
         from src.embedding.voyage_embedder import VoyageEmbedder
@@ -129,10 +152,11 @@ def _create_embedder(settings: Settings):
             dimensions=settings.embedding.dimensions,
             output_dtype=settings.embedding.output_dtype,
             batch_size=settings.embedding.batch_size,
-            api_key=settings.voyage_api_key,
+            api_key=voyage_api_key,
         )
     elif provider == "openai":
-        if not settings.openai_api_key:
+        openai_api_key = _get_env_or_setting("OPENAI_API_KEY", settings.openai_api_key)
+        if not openai_api_key:
             raise RetrieverInitError("OPENAI_API_KEY não configurada")
 
         # Implementar OpenAI embedder se necessário
@@ -158,8 +182,11 @@ def _create_reranker(settings: Settings):
     provider = settings.retrieval.reranking.provider
     logger.info(f"Criando reranker: {provider}")
 
+    # Obter API key do ambiente (prioridade) ou settings
+    cohere_api_key = _get_env_or_setting("COHERE_API_KEY", settings.cohere_api_key)
+
     if provider == "cohere":
-        if not settings.cohere_api_key:
+        if not cohere_api_key:
             logger.warning(
                 "COHERE_API_KEY não configurada. Reranking desabilitado."
             )
@@ -168,7 +195,7 @@ def _create_reranker(settings: Settings):
         from src.retrieval.reranker import CohereReranker
 
         return CohereReranker(
-            api_key=settings.cohere_api_key,
+            api_key=cohere_api_key,
             model=settings.retrieval.reranking.model,
             top_n=settings.retrieval.reranking.top_n,
         )
