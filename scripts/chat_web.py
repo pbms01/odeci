@@ -465,6 +465,60 @@ def main():
             clear_messages()
             st.rerun()
 
+        # Diagnóstico de Busca
+        st.divider()
+        with st.expander("🔧 Diagnóstico de Busca"):
+            if st.button("🧪 Testar Busca Direta"):
+                try:
+                    from src.chat.web.retriever_factory import _create_vector_store, _create_embedder
+                    test_settings = get_settings()
+
+                    # 1. Criar vector store e embedder
+                    vs = _create_vector_store(test_settings)
+                    embedder = _create_embedder(test_settings)
+
+                    # 2. Testar query
+                    test_query = "O que são contratos inteligentes?"
+                    st.write(f"**Query de teste:** {test_query}")
+
+                    # 3. Gerar embedding
+                    query_vector = embedder.embed_query(test_query)
+                    st.write(f"**Dimensão do embedding:** {len(query_vector)}")
+                    st.write(f"**Primeiros 5 valores:** {query_vector[:5]}")
+
+                    # 4. Buscar diretamente no Qdrant
+                    coll = state.collection if state.collection else "odeci_docs"
+                    results = vs.search(
+                        collection=coll,
+                        query_vector=query_vector,
+                        top_k=10,
+                    )
+
+                    st.write(f"**Resultados encontrados:** {len(results)}")
+
+                    if results:
+                        for i, r in enumerate(results[:5]):
+                            st.write(f"**{i+1}.** Score: {r.score:.4f}")
+                            st.caption(r.text[:150] + "...")
+                    else:
+                        st.error("Nenhum resultado encontrado!")
+
+                        # Verificar info da coleção
+                        if hasattr(vs, '_client'):
+                            try:
+                                info = vs._client.get_collection(coll)
+                                st.write(f"**Info da coleção:**")
+                                st.write(f"- Pontos: {info.points_count}")
+                                st.write(f"- Dimensão: {info.config.params.vectors.size}")
+                                st.write(f"- Distância: {info.config.params.vectors.distance}")
+                            except Exception as e:
+                                st.error(f"Erro ao obter info: {e}")
+
+                except Exception as e:
+                    st.error(f"Erro no teste: {e}")
+                    import traceback
+                    st.code(traceback.format_exc())
+
         # Info
         st.divider()
         with st.expander("ℹ️ Sobre"):
@@ -563,10 +617,20 @@ def main():
                         service.change_response_style(session, state.response_style)
 
                     # Debug: mostrar info de busca
-                    with st.expander("🔍 Debug: Informações de Busca", expanded=False):
+                    with st.expander("🔍 Debug: Informações de Busca", expanded=True):
                         st.write(f"**Coleção:** {state.collection}")
                         st.write(f"**Query:** {user_input}")
                         st.write(f"**Retriever inicializado:** {retriever_manager.is_initialized}")
+
+                        # Testar busca diretamente
+                        try:
+                            from src.chat.web.retriever_factory import _create_vector_store
+                            settings = get_settings()
+                            vs = _create_vector_store(settings)
+                            stats = vs.count(state.collection)
+                            st.write(f"**Vetores na coleção:** {stats}")
+                        except Exception as e:
+                            st.error(f"Erro ao verificar coleção: {e}")
 
                     # Gerar resposta com streaming
                     full_response = ""

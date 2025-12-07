@@ -204,6 +204,10 @@ class QdrantVectorStore(BaseVectorStore):
         """
         from qdrant_client.models import Filter, FieldCondition, MatchValue
 
+        print(f"[ODECI QdrantStore.search] collection={collection}, top_k={top_k}")
+        print(f"[ODECI QdrantStore.search] query_vector dim={len(query_vector)}, first 5 values={query_vector[:5]}")
+        print(f"[ODECI QdrantStore.search] namespace={namespace}, filter_metadata={filter_metadata}")
+
         # Construir filtro
         conditions = []
 
@@ -221,15 +225,28 @@ class QdrantVectorStore(BaseVectorStore):
                 ))
 
         query_filter = Filter(must=conditions) if conditions else None
+        print(f"[ODECI QdrantStore.search] query_filter={query_filter}")
 
         # Executar busca (qdrant-client v1.7+ usa query_points)
-        results = self._client.query_points(
-            collection_name=collection,
-            query=query_vector,
-            limit=top_k,
-            query_filter=query_filter,
-            with_payload=True,
-        ).points
+        try:
+            response = self._client.query_points(
+                collection_name=collection,
+                query=query_vector,
+                limit=top_k,
+                query_filter=query_filter,
+                with_payload=True,
+            )
+            results = response.points
+            print(f"[ODECI QdrantStore.search] Qdrant retornou {len(results)} pontos")
+
+            # Mostrar scores dos resultados
+            if results:
+                scores = [r.score for r in results[:5]]
+                print(f"[ODECI QdrantStore.search] Top 5 scores: {scores}")
+        except Exception as e:
+            print(f"[ODECI QdrantStore.search] ERRO na busca: {e}")
+            logger.error(f"Erro na busca Qdrant: {e}")
+            return []
 
         # Converter resultados
         search_results = []
@@ -242,6 +259,7 @@ class QdrantVectorStore(BaseVectorStore):
                 metadata=payload,
             ))
 
+        print(f"[ODECI QdrantStore.search] Retornando {len(search_results)} resultados")
         return search_results
     
     def get_chunk_by_id(
