@@ -282,22 +282,35 @@ class HybridRetriever:
 
         # 3. Reranking
         rerank_scores: dict[str, float] = {}
-        
+
         if rerank and self._reranker and results:
+            print(f"[ODECI Retriever] RERANK: Enviando {len(results)} docs para reranker, top_n={top_k}")
+            print(f"[ODECI Retriever] RERANK: Primeiros 3 textos enviados:")
+            for i, r in enumerate(results[:3]):
+                print(f"  {i+1}. {r.text[:80]}...")
+
             try:
                 reranked = self._reranker.rerank(
                     query=query,
                     documents=[r.text for r in results],
                     top_n=top_k,
                 )
-                
+
+                print(f"[ODECI Retriever] RERANK: Recebeu {len(reranked)} resultados do reranker")
+                if reranked:
+                    for i, item in enumerate(reranked[:3]):
+                        idx = item.get("index", -1)
+                        score = item.get("relevance_score", 0)
+                        text_preview = item.get("text", "")[:60] if item.get("text") else "N/A"
+                        print(f"  {i+1}. idx={idx}, score={score:.4f}, text={text_preview}...")
+
                 # Mapear scores de rerank
                 for item in reranked:
                     idx = item.get("index", 0)
                     score = item.get("relevance_score", 0)
                     if idx < len(results):
                         rerank_scores[results[idx].chunk_id] = score
-                
+
                 # Reordenar por score de rerank
                 results = sorted(
                     results,
@@ -306,6 +319,8 @@ class HybridRetriever:
                 )[:top_k]
 
                 print(f"[ODECI Retriever] Após rerank: {len(results)} resultados, rerank_scores={len(rerank_scores)}")
+                if results:
+                    print(f"[ODECI Retriever] Top resultado após rerank: {results[0].text[:80]}...")
                 logger.debug("Reranking aplicado")
             except Exception as e:
                 print(f"[ODECI Retriever] ERRO no reranking: {e}")
