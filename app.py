@@ -12,7 +12,7 @@ Demonstra visualmente o pipeline RAG (Retrieval-Augmented Generation):
 """
 
 # Versão da aplicação
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 import streamlit as st
 import tempfile
@@ -170,6 +170,15 @@ def init_session_state():
         st.session_state.collection_name = None
     if "search_history" not in st.session_state:
         st.session_state.search_history = []
+    # Estado do retrieval para persistir entre reruns
+    if "retrieval_results" not in st.session_state:
+        st.session_state.retrieval_results = None
+    if "retrieval_query" not in st.session_state:
+        st.session_state.retrieval_query = None
+    if "retrieval_config" not in st.session_state:
+        st.session_state.retrieval_config = {}
+    if "llm_response" not in st.session_state:
+        st.session_state.llm_response = None
 
 
 def render_header():
@@ -1279,23 +1288,41 @@ def render_step_5_retrieval(chunks, config):
     query = st.text_input(
         "🔎 Digite sua pergunta:",
         placeholder="Ex: Quais são as cláusulas de rescisão do contrato?",
-        help="A busca será feita por similaridade semântica, não por palavras-chave"
+        help="A busca será feita por similaridade semântica, não por palavras-chave",
+        key="retrieval_query_input"
     )
 
     col1, col2, col3 = st.columns(3)
     with col1:
-        top_k = st.number_input("Resultados (top_k):", 1, 20, config["top_k"])
+        top_k = st.number_input("Resultados (top_k):", 1, 20, config["top_k"], key="retrieval_top_k")
     with col2:
-        use_rerank = st.checkbox("Reranking", config["use_reranking"])
+        use_rerank = st.checkbox("Reranking", config["use_reranking"], key="retrieval_rerank")
     with col3:
-        include_parent = st.checkbox("Contexto Parent", config["include_parent"])
+        include_parent = st.checkbox("Contexto Parent", config["include_parent"], key="retrieval_parent")
 
-    if query and st.button("🚀 Buscar", type="primary"):
-        render_search_process(query, chunks, top_k, use_rerank, include_parent)
+    # Botão para buscar - executa retrieval e armazena resultados
+    if query and st.button("🚀 Buscar", type="primary", key="btn_buscar"):
+        # Executar retrieval e armazenar no session_state
+        execute_retrieval(query, chunks, top_k, use_rerank, include_parent)
+
+    # Exibir resultados se existirem no session_state
+    if st.session_state.retrieval_results is not None:
+        display_retrieval_results(chunks)
 
 
-def render_search_process(query, chunks, top_k, use_rerank, include_parent):
-    """Renderiza o processo de busca passo a passo."""
+def execute_retrieval(query: str, chunks, top_k: int, use_rerank: bool, include_parent: bool):
+    """
+    Executa o retrieval e armazena resultados no session_state.
+
+    Esta função é chamada quando o usuário clica em 'Buscar'.
+    Os resultados ficam persistidos para uso posterior na geração LLM.
+    """
+    import random
+    import hashlib
+
+    # Usar hash da query como seed para resultados reproduzíveis
+    seed = int(hashlib.md5(query.encode()).hexdigest()[:8], 16)
+    random.seed(seed)
 
     st.markdown("---")
     st.subheader("📋 Processo de Retrieval Detalhado")
@@ -1308,11 +1335,9 @@ def render_search_process(query, chunks, top_k, use_rerank, include_parent):
         with col1:
             st.markdown(f"**Query:** _{query}_")
 
-            # Simular embedding
             with st.spinner("Gerando embedding da query..."):
                 time.sleep(0.5)
 
-            import random
             query_embedding = [round(random.uniform(-1, 1), 4) for _ in range(8)]
             st.code(f"Query Vector: [{', '.join(map(str, query_embedding))}, ...] (1024 dims)")
 
@@ -1329,7 +1354,6 @@ def render_search_process(query, chunks, top_k, use_rerank, include_parent):
         # Simular resultados
         all_chunks = chunks.child_chunks[:20]  # Usar child chunks para busca
 
-        import random
         results = []
         for chunk in all_chunks:
             score = round(random.uniform(0.5, 0.95), 4)
@@ -1387,11 +1411,42 @@ def render_search_process(query, chunks, top_k, use_rerank, include_parent):
 
             st.dataframe(comparison_data, use_container_width=True)
 
+    # Resultados finais
+    final_results = results[:top_k]
+
+    # Armazenar no session_state para persistência
+    st.session_state.retrieval_results = final_results
+    st.session_state.retrieval_query = query
+    st.session_state.retrieval_config = {
+        "top_k": top_k,
+        "use_rerank": use_rerank,
+        "include_parent": include_parent
+    }
+    # Limpar resposta LLM anterior quando nova busca é feita
+    st.session_state.llm_response = None
+
+    st.success(f"✅ Retrieval concluído! {len(final_results)} chunks recuperados.")
+
+
+def display_retrieval_results(chunks):
+    """
+    Exibe os resultados do retrieval armazenados no session_state.
+
+    Esta função é chamada sempre que há resultados disponíveis,
+    permitindo que a geração LLM funcione mesmo após reruns.
+    """
+    final_results = st.session_state.retrieval_results
+    query = st.session_state.retrieval_query
+    config = st.session_state.retrieval_config
+    use_rerank = config.get("use_rerank", False)
+    include_parent = config.get("include_parent", False)
+
+    st.markdown("---")
+
     # Etapa 4: Resultados finais
     with st.container():
         st.markdown("### 4️⃣ Resultados Finais")
-
-        final_results = results[:top_k]
+        st.markdown(f"**Query:** _{query}_")
 
         for i, r in enumerate(final_results):
             chunk = r["chunk"]
@@ -1431,7 +1486,7 @@ def render_search_process(query, chunks, top_k, use_rerank, include_parent):
                             parent.text[:500] + "..." if len(parent.text) > 500 else parent.text,
                             height=100,
                             disabled=True,
-                            key=f"parent_context_{i}"
+                            key=f"parent_context_display_{i}"
                         )
 
     # Etapa 5: Geração de resposta com LLM
@@ -1477,84 +1532,24 @@ Cite as fontes usando [1], [2], etc.
                 "claude-sonnet-4-5-20250929": "Claude Sonnet 4.5 (equilibrado)",
                 "claude-3-5-sonnet-20241022": "Claude 3.5 Sonnet (rápido)",
             }.get(x, x),
-            key="llm_model"
+            key="llm_model_select"
         )
 
-        # Botão para gerar resposta
-        if st.button("🤖 Gerar Resposta com LLM", type="secondary"):
-            try:
-                from src.generation import create_generator
+        # Botão para gerar resposta com streaming
+        if st.button("🤖 Gerar Resposta com LLM", type="primary", key="btn_gerar_llm"):
+            generate_llm_response_streaming(
+                query=query,
+                context_texts=context_texts,
+                final_results=final_results,
+                llm_model=llm_model,
+                use_rerank=use_rerank,
+                chunks=chunks
+            )
 
-                # Verificar API key Anthropic
-                api_key = get_api_key("ANTHROPIC_API_KEY")
-                if not api_key:
-                    st.error("⚠️ Configure ANTHROPIC_API_KEY nos Secrets ou variáveis de ambiente")
-                    st.code("# Local: export ANTHROPIC_API_KEY='sua-chave'\n# Streamlit Cloud: adicione em Settings > Secrets")
-                    st.stop()
+        # Exibir resposta anterior se existir (após rerun)
+        elif st.session_state.llm_response is not None:
+            display_stored_llm_response(query, final_results, chunks)
 
-                with st.spinner(f"Gerando resposta com {llm_model}..."):
-                    # Criar gerador Anthropic
-                    generator = create_generator(
-                        provider="anthropic",
-                        model=llm_model,
-                        api_key=api_key,
-                        temperature=0.1,
-                        max_tokens=1024
-                    )
-
-                    # Preparar metadados das fontes
-                    sources_metadata = [
-                        {
-                            "section": r['chunk'].metadata.section or "N/A",
-                            "domain": r['chunk'].metadata.domain,
-                            "score": r['rerank_score'] if use_rerank else r['score']
-                        }
-                        for r in final_results[:5]
-                    ]
-
-                    # Gerar resposta
-                    result = generator.generate(
-                        query=query,
-                        context=context_texts,
-                        sources_metadata=sources_metadata
-                    )
-
-                    # Exibir resposta
-                    st.markdown("---")
-                    st.markdown("**🤖 Resposta Gerada:**")
-                    st.markdown(result.answer)
-
-                    # Métricas
-                    st.markdown("---")
-                    st.markdown("**📊 Métricas de Geração:**")
-
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1:
-                        st.metric("Modelo", result.model)
-                    with col2:
-                        st.metric("Tokens Prompt", f"{result.prompt_tokens:,}")
-                    with col3:
-                        st.metric("Tokens Resposta", f"{result.completion_tokens:,}")
-                    with col4:
-                        st.metric("Custo Est.", f"${result.cost_estimate:.4f}")
-
-                    # Fontes utilizadas
-                    if result.sources:
-                        st.markdown("**📚 Fontes Citadas:**")
-                        for src in result.sources:
-                            st.markdown(f"- [{src['index']}] Seção: {src['section']} | Domínio: {src['domain']} | Score: {src['score']:.4f}")
-
-                    # Visualização do caminho de atenção
-                    render_attention_path(query, final_results, chunks)
-
-            except ImportError as e:
-                st.error(f"Erro de importação: {e}")
-                st.info("Certifique-se de que os pacotes 'openai' ou 'anthropic' estão instalados.")
-            except Exception as e:
-                st.error(f"Erro na geração: {e}")
-                import traceback
-                with st.expander("Ver detalhes do erro"):
-                    st.code(traceback.format_exc())
         else:
             st.info("""
             💡 **Clique no botão acima para gerar uma resposta real com LLM.**
@@ -1564,11 +1559,150 @@ Cite as fontes usando [1], [2], etc.
             """)
 
     # Salvar no histórico
-    st.session_state.search_history.append({
-        "query": query,
-        "results": len(final_results),
-        "top_score": final_results[0]["rerank_score"] if use_rerank else final_results[0]["score"] if final_results else 0
-    })
+    if query not in [h.get("query") for h in st.session_state.search_history]:
+        st.session_state.search_history.append({
+            "query": query,
+            "results": len(final_results),
+            "top_score": final_results[0]["rerank_score"] if use_rerank else final_results[0]["score"] if final_results else 0
+        })
+
+
+def generate_llm_response_streaming(query: str, context_texts: list, final_results: list,
+                                     llm_model: str, use_rerank: bool, chunks):
+    """
+    Gera resposta LLM com streaming e exibe em tempo real.
+    """
+    try:
+        from src.generation import create_generator
+
+        # Verificar API key Anthropic
+        api_key = get_api_key("ANTHROPIC_API_KEY")
+        if not api_key:
+            st.error("⚠️ Configure ANTHROPIC_API_KEY nos Secrets ou variáveis de ambiente")
+            st.code("# Local: export ANTHROPIC_API_KEY='sua-chave'\n# Streamlit Cloud: adicione em Settings > Secrets")
+            return
+
+        # Preparar metadados das fontes
+        sources_metadata = [
+            {
+                "section": r['chunk'].metadata.section or "N/A",
+                "domain": r['chunk'].metadata.domain,
+                "score": r['rerank_score'] if use_rerank else r['score']
+            }
+            for r in final_results[:5]
+        ]
+
+        # Criar gerador Anthropic
+        generator = create_generator(
+            provider="anthropic",
+            model=llm_model,
+            api_key=api_key,
+            temperature=0.1,
+            max_tokens=1024
+        )
+
+        st.markdown("---")
+        st.markdown("**🤖 Resposta Gerada:**")
+
+        # Container para streaming
+        response_placeholder = st.empty()
+        full_response = ""
+
+        # Gerar com streaming
+        stream_gen, usage_info = generator.generate_stream_with_usage(
+            query=query,
+            context=context_texts,
+            sources_metadata=sources_metadata
+        )
+
+        # Exibir em tempo real
+        for chunk in stream_gen:
+            full_response += chunk
+            response_placeholder.markdown(full_response + "▌")
+
+        # Finalizar exibição
+        response_placeholder.markdown(full_response)
+
+        # Armazenar resposta para exibição após reruns
+        st.session_state.llm_response = {
+            "answer": full_response,
+            "model": llm_model,
+            "prompt_tokens": usage_info["input_tokens"],
+            "completion_tokens": usage_info["output_tokens"],
+            "sources": [
+                {
+                    "index": i + 1,
+                    "section": meta["section"],
+                    "domain": meta["domain"],
+                    "score": meta["score"],
+                }
+                for i, meta in enumerate(sources_metadata)
+            ]
+        }
+
+        # Métricas
+        display_llm_metrics(st.session_state.llm_response)
+
+        # Visualização do caminho de atenção
+        render_attention_path(query, final_results, chunks)
+
+    except ImportError as e:
+        st.error(f"Erro de importação: {e}")
+        st.info("Certifique-se de que o pacote 'anthropic' está instalado.")
+    except Exception as e:
+        st.error(f"Erro na geração: {e}")
+        import traceback
+        with st.expander("Ver detalhes do erro"):
+            st.code(traceback.format_exc())
+
+
+def display_stored_llm_response(query: str, final_results: list, chunks):
+    """
+    Exibe a resposta LLM armazenada no session_state após um rerun.
+    """
+    response = st.session_state.llm_response
+
+    st.markdown("---")
+    st.markdown("**🤖 Resposta Gerada:**")
+    st.markdown(response["answer"])
+
+    # Métricas
+    display_llm_metrics(response)
+
+    # Visualização do caminho de atenção
+    render_attention_path(query, final_results, chunks)
+
+
+def display_llm_metrics(response: dict):
+    """Exibe métricas da geração LLM."""
+    st.markdown("---")
+    st.markdown("**📊 Métricas de Geração:**")
+
+    # Calcular custo
+    prices = {
+        "claude-opus-4-5-20251101": {"input": 0.015, "output": 0.075},
+        "claude-sonnet-4-5-20250929": {"input": 0.003, "output": 0.015},
+        "claude-3-5-sonnet-20241022": {"input": 0.003, "output": 0.015},
+    }
+    price = prices.get(response["model"], prices["claude-3-5-sonnet-20241022"])
+    cost = (response["prompt_tokens"] / 1000) * price["input"] + \
+           (response["completion_tokens"] / 1000) * price["output"]
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Modelo", response["model"].split("-")[1].title())
+    with col2:
+        st.metric("Tokens Prompt", f"{response['prompt_tokens']:,}")
+    with col3:
+        st.metric("Tokens Resposta", f"{response['completion_tokens']:,}")
+    with col4:
+        st.metric("Custo Est.", f"${cost:.4f}")
+
+    # Fontes utilizadas
+    if response.get("sources"):
+        st.markdown("**📚 Fontes Citadas:**")
+        for src in response["sources"]:
+            st.markdown(f"- [{src['index']}] Seção: {src['section']} | Domínio: {src['domain']} | Score: {src['score']:.4f}")
 
 
 def render_history():

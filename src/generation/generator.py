@@ -385,6 +385,114 @@ Responda de forma precisa e cite as fontes usando [1], [2], etc."""
             logger.error(f"Erro na geração Anthropic: {e}")
             raise
 
+    def generate_stream(
+        self,
+        query: str,
+        context: list[str],
+        system_prompt: str | None = None,
+        sources_metadata: list[dict] | None = None,
+        **kwargs
+    ):
+        """
+        Gera resposta usando streaming.
+
+        Yields:
+            Chunks de texto conforme são gerados.
+        """
+        system = system_prompt or self.DEFAULT_SYSTEM_PROMPT
+
+        # Formatar contexto
+        formatted_context = "\n\n".join([
+            f"[{i+1}] {ctx}" for i, ctx in enumerate(context)
+        ])
+
+        user_message = f"""CONTEXTO DOS DOCUMENTOS:
+{formatted_context}
+
+PERGUNTA DO USUÁRIO:
+{query}
+
+Responda de forma precisa e cite as fontes usando [1], [2], etc."""
+
+        temperature = kwargs.get("temperature", self._temperature)
+        max_tokens = kwargs.get("max_tokens", self._max_tokens)
+
+        try:
+            with self._client.messages.stream(
+                model=self._model,
+                system=system,
+                messages=[
+                    {"role": "user", "content": user_message}
+                ],
+                temperature=temperature,
+                max_tokens=max_tokens,
+            ) as stream:
+                for text in stream.text_stream:
+                    yield text
+
+        except Exception as e:
+            logger.error(f"Erro no streaming Anthropic: {e}")
+            raise
+
+    def generate_stream_with_usage(
+        self,
+        query: str,
+        context: list[str],
+        system_prompt: str | None = None,
+        sources_metadata: list[dict] | None = None,
+        **kwargs
+    ) -> tuple[any, dict]:
+        """
+        Gera resposta com streaming e retorna usage ao final.
+
+        Returns:
+            Tuple (generator de chunks, dict para armazenar usage).
+        """
+        system = system_prompt or self.DEFAULT_SYSTEM_PROMPT
+
+        # Formatar contexto
+        formatted_context = "\n\n".join([
+            f"[{i+1}] {ctx}" for i, ctx in enumerate(context)
+        ])
+
+        user_message = f"""CONTEXTO DOS DOCUMENTOS:
+{formatted_context}
+
+PERGUNTA DO USUÁRIO:
+{query}
+
+Responda de forma precisa e cite as fontes usando [1], [2], etc."""
+
+        temperature = kwargs.get("temperature", self._temperature)
+        max_tokens = kwargs.get("max_tokens", self._max_tokens)
+
+        usage_info = {"input_tokens": 0, "output_tokens": 0}
+
+        def stream_generator():
+            try:
+                with self._client.messages.stream(
+                    model=self._model,
+                    system=system,
+                    messages=[
+                        {"role": "user", "content": user_message}
+                    ],
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                ) as stream:
+                    for text in stream.text_stream:
+                        yield text
+
+                    # Capturar usage após streaming
+                    final_message = stream.get_final_message()
+                    usage_info["input_tokens"] = final_message.usage.input_tokens
+                    usage_info["output_tokens"] = final_message.usage.output_tokens
+
+            except Exception as e:
+                logger.error(f"Erro no streaming Anthropic: {e}")
+                raise
+
+        return stream_generator(), usage_info
+
 
 def create_generator(
     provider: str = "openai",
