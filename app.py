@@ -12,7 +12,7 @@ Demonstra visualmente o pipeline RAG (Retrieval-Augmented Generation):
 """
 
 # Versão da aplicação
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 import streamlit as st
 import tempfile
@@ -1316,6 +1316,161 @@ def execute_retrieval(query: str, chunks, top_k: int, use_rerank: bool, include_
 
     Esta função é chamada quando o usuário clica em 'Buscar'.
     Os resultados ficam persistidos para uso posterior na geração LLM.
+
+    Usa embeddings reais se disponíveis, caso contrário simula.
+    """
+    st.markdown("---")
+    st.subheader("📋 Processo de Retrieval Detalhado")
+
+    # Verificar se temos embeddings reais
+    has_real_embeddings = (
+        st.session_state.get("embeddings_data") is not None and
+        len(st.session_state.embeddings_data.get("embeddings", [])) > 0
+    )
+    voyage_api_key = get_api_key("VOYAGE_API_KEY")
+
+    if has_real_embeddings and voyage_api_key:
+        # Usar busca semântica real
+        results = execute_real_retrieval(query, chunks, top_k, use_rerank, voyage_api_key)
+    else:
+        # Fallback para simulação
+        if not has_real_embeddings:
+            st.warning("⚠️ Embeddings não gerados. Usando busca simulada. Execute a etapa 3 (Embedding) primeiro para busca real.")
+        elif not voyage_api_key:
+            st.warning("⚠️ API Voyage não configurada. Usando busca simulada.")
+        results = execute_simulated_retrieval(query, chunks, top_k, use_rerank)
+
+    # Resultados finais
+    final_results = results[:top_k]
+
+    # Armazenar no session_state para persistência
+    st.session_state.retrieval_results = final_results
+    st.session_state.retrieval_query = query
+    st.session_state.retrieval_config = {
+        "top_k": top_k,
+        "use_rerank": use_rerank,
+        "include_parent": include_parent
+    }
+    # Limpar resposta LLM anterior quando nova busca é feita
+    st.session_state.llm_response = None
+
+    st.success(f"✅ Retrieval concluído! {len(final_results)} chunks recuperados.")
+
+
+def execute_real_retrieval(query: str, chunks, top_k: int, use_rerank: bool, api_key: str) -> list:
+    """
+    Executa busca semântica real usando embeddings Voyage AI.
+    """
+    import voyageai
+
+    embeddings_data = st.session_state.embeddings_data
+    stored_chunks = embeddings_data["chunks"]
+    stored_embeddings = np.array(embeddings_data["embeddings"])
+
+    # Etapa 1: Embedding da query
+    with st.container():
+        st.markdown("### 1️⃣ Embedding da Query (Real)")
+
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            st.markdown(f"**Query:** _{query}_")
+
+            with st.spinner("Gerando embedding da query via Voyage AI..."):
+                client = voyageai.Client(api_key=api_key)
+                query_result = client.embed(
+                    texts=[query],
+                    model="voyage-3-large",
+                    input_type="query"
+                )
+                query_embedding = np.array(query_result.embeddings[0])
+
+            st.code(f"Query Vector: [{query_embedding[0]:.4f}, {query_embedding[1]:.4f}, {query_embedding[2]:.4f}, ...] ({len(query_embedding)} dims)")
+            st.success("✅ Embedding real gerado via Voyage AI")
+
+        with col2:
+            st.info("💡 A query usa o mesmo modelo (voyage-3-large) para garantir compatibilidade no espaço vetorial.")
+
+    # Etapa 2: Busca por similaridade (Cosine Similarity real)
+    with st.container():
+        st.markdown("### 2️⃣ Busca por Similaridade (Real)")
+
+        with st.spinner("Calculando similaridade de cosseno..."):
+            # Calcular similaridade de cosseno
+            # cos_sim = (A · B) / (||A|| * ||B||)
+            query_norm = np.linalg.norm(query_embedding)
+            embeddings_norms = np.linalg.norm(stored_embeddings, axis=1)
+
+            # Produto escalar entre query e todos os embeddings
+            dot_products = np.dot(stored_embeddings, query_embedding)
+
+            # Similaridade de cosseno
+            similarities = dot_products / (embeddings_norms * query_norm)
+
+        # Criar resultados com scores reais
+        results = []
+        for i, (chunk, score) in enumerate(zip(stored_chunks, similarities)):
+            results.append({
+                "chunk": chunk,
+                "score": float(score),
+                "rerank_score": None,
+                "original_index": i
+            })
+
+        # Ordenar por score
+        results.sort(key=lambda x: x["score"], reverse=True)
+        top_results = results[:top_k * 2]  # Pegar mais para reranking
+
+        st.markdown(f"**Encontrados:** {len(stored_chunks)} chunks no corpus")
+        st.markdown(f"**Top candidatos:** {len(top_results)} chunks com maior similaridade")
+
+        # Estatísticas de similaridade
+        all_scores = [r["score"] for r in results]
+        st.markdown(f"""
+        **Estatísticas de Similaridade:**
+        - Máximo: {max(all_scores):.4f}
+        - Mínimo: {min(all_scores):.4f}
+        - Média: {np.mean(all_scores):.4f}
+        """)
+
+        # Visualização de scores
+        st.markdown("**Distribuição de Scores (Top 10):**")
+        score_data = {f"#{i+1}": r["score"] for i, r in enumerate(top_results[:10])}
+        st.bar_chart(score_data)
+
+    # Etapa 3: Reranking (simulado por enquanto, poderia usar Cohere)
+    if use_rerank:
+        with st.container():
+            st.markdown("### 3️⃣ Reranking")
+
+            st.info("💡 Reranking com Cross-Encoder ainda não implementado com API real. Usando scores de similaridade como base.")
+
+            # Por enquanto, apenas ajustar ligeiramente os scores
+            import random
+            random.seed(42)
+            for r in top_results:
+                # Pequeno ajuste baseado no score original
+                r["rerank_score"] = min(0.99, r["score"] + random.uniform(-0.05, 0.1))
+
+            top_results.sort(key=lambda x: x["rerank_score"], reverse=True)
+
+            # Mostrar mudança de ranking
+            st.markdown("**Top 5 após reranking:**")
+            comparison_data = []
+            for i, r in enumerate(top_results[:5]):
+                comparison_data.append({
+                    "Posição": i + 1,
+                    "Score Similaridade": f"{r['score']:.4f}",
+                    "Score Rerank": f"{r['rerank_score']:.4f}",
+                    "Preview": r["chunk"].text[:60] + "..."
+                })
+            st.dataframe(comparison_data, use_container_width=True)
+
+    return top_results
+
+
+def execute_simulated_retrieval(query: str, chunks, top_k: int, use_rerank: bool) -> list:
+    """
+    Executa busca simulada (fallback quando embeddings reais não estão disponíveis).
     """
     import random
     import hashlib
@@ -1324,35 +1479,32 @@ def execute_retrieval(query: str, chunks, top_k: int, use_rerank: bool, include_
     seed = int(hashlib.md5(query.encode()).hexdigest()[:8], 16)
     random.seed(seed)
 
-    st.markdown("---")
-    st.subheader("📋 Processo de Retrieval Detalhado")
-
-    # Etapa 1: Embedding da query
+    # Etapa 1: Embedding da query (simulado)
     with st.container():
-        st.markdown("### 1️⃣ Embedding da Query")
+        st.markdown("### 1️⃣ Embedding da Query (Simulado)")
 
         col1, col2 = st.columns([2, 1])
         with col1:
             st.markdown(f"**Query:** _{query}_")
 
-            with st.spinner("Gerando embedding da query..."):
-                time.sleep(0.5)
+            with st.spinner("Simulando embedding da query..."):
+                time.sleep(0.3)
 
             query_embedding = [round(random.uniform(-1, 1), 4) for _ in range(8)]
-            st.code(f"Query Vector: [{', '.join(map(str, query_embedding))}, ...] (1024 dims)")
+            st.code(f"Query Vector: [{', '.join(map(str, query_embedding))}, ...] (simulado)")
 
         with col2:
-            st.info("💡 A query usa o mesmo modelo de embedding para garantir compatibilidade no espaço vetorial.")
+            st.warning("⚠️ Usando embedding simulado. Gere embeddings reais na aba 3 para busca semântica real.")
 
-    # Etapa 2: Busca por similaridade
+    # Etapa 2: Busca por similaridade (simulada)
     with st.container():
-        st.markdown("### 2️⃣ Busca por Similaridade")
+        st.markdown("### 2️⃣ Busca por Similaridade (Simulada)")
 
-        with st.spinner("Calculando similaridades..."):
-            time.sleep(0.5)
+        with st.spinner("Simulando similaridades..."):
+            time.sleep(0.3)
 
-        # Simular resultados
-        all_chunks = chunks.child_chunks[:20]  # Usar child chunks para busca
+        # Simular resultados - usar todos os child chunks
+        all_chunks = chunks.child_chunks
 
         results = []
         for chunk in all_chunks:
@@ -1367,21 +1519,21 @@ def execute_retrieval(query: str, chunks, top_k: int, use_rerank: bool, include_
         results.sort(key=lambda x: x["score"], reverse=True)
         results = results[:top_k * 2]  # Pegar mais para reranking
 
-        st.markdown(f"**Encontrados:** {len(results)} candidatos iniciais")
+        st.markdown(f"**Encontrados:** {len(all_chunks)} chunks no corpus")
+        st.markdown(f"**Scores simulados para demonstração**")
 
         # Visualização de scores
-        st.markdown("**Distribuição de Scores (Cosine Similarity):**")
-
+        st.markdown("**Distribuição de Scores (Simulados):**")
         score_data = {f"Chunk {i+1}": r["score"] for i, r in enumerate(results[:10])}
         st.bar_chart(score_data)
 
-    # Etapa 3: Reranking (opcional)
+    # Etapa 3: Reranking (simulado)
     if use_rerank:
         with st.container():
-            st.markdown("### 3️⃣ Reranking com Cross-Encoder")
+            st.markdown("### 3️⃣ Reranking com Cross-Encoder (Simulado)")
 
-            with st.spinner("Aplicando reranking..."):
-                time.sleep(0.7)
+            with st.spinner("Simulando reranking..."):
+                time.sleep(0.3)
 
             st.markdown("""
             O **Cross-Encoder** processa query + documento juntos:
@@ -1399,7 +1551,6 @@ def execute_retrieval(query: str, chunks, top_k: int, use_rerank: bool, include_
 
             # Mostrar mudança de ranking
             st.markdown("**Comparação de Rankings:**")
-
             comparison_data = []
             for i, r in enumerate(results[:5]):
                 comparison_data.append({
@@ -1408,24 +1559,9 @@ def execute_retrieval(query: str, chunks, top_k: int, use_rerank: bool, include_
                     "Score Rerank": r["rerank_score"],
                     "Chunk Preview": r["chunk"].text[:50] + "..."
                 })
-
             st.dataframe(comparison_data, use_container_width=True)
 
-    # Resultados finais
-    final_results = results[:top_k]
-
-    # Armazenar no session_state para persistência
-    st.session_state.retrieval_results = final_results
-    st.session_state.retrieval_query = query
-    st.session_state.retrieval_config = {
-        "top_k": top_k,
-        "use_rerank": use_rerank,
-        "include_parent": include_parent
-    }
-    # Limpar resposta LLM anterior quando nova busca é feita
-    st.session_state.llm_response = None
-
-    st.success(f"✅ Retrieval concluído! {len(final_results)} chunks recuperados.")
+    return results
 
 
 def display_retrieval_results(chunks):
