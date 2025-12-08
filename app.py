@@ -65,6 +65,21 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+def get_api_key(key_name: str) -> str | None:
+    """Obtém API key do st.secrets ou variáveis de ambiente."""
+    import os
+
+    # Primeiro tenta st.secrets (Streamlit Cloud)
+    try:
+        if key_name in st.secrets:
+            return st.secrets[key_name]
+    except Exception:
+        pass
+
+    # Fallback para variáveis de ambiente (local)
+    return os.getenv(key_name)
+
+
 def init_session_state():
     """Inicializa o estado da sessão."""
     if "pipeline" not in st.session_state:
@@ -1035,20 +1050,19 @@ Cite as fontes usando [1], [2], etc.
         if st.button("🤖 Gerar Resposta com LLM", type="secondary"):
             try:
                 from src.generation import create_generator
-                import os
 
-                # Verificar API key
+                # Verificar API key (suporta st.secrets e env vars)
                 if llm_provider == "openai":
-                    api_key = os.getenv("OPENAI_API_KEY")
+                    api_key = get_api_key("OPENAI_API_KEY")
                     if not api_key:
-                        st.error("⚠️ Configure a variável de ambiente OPENAI_API_KEY")
-                        st.code("export OPENAI_API_KEY='sua-chave-aqui'")
+                        st.error("⚠️ Configure OPENAI_API_KEY nos Secrets ou variáveis de ambiente")
+                        st.code("# Local: export OPENAI_API_KEY='sua-chave'\n# Streamlit Cloud: adicione em Settings > Secrets")
                         st.stop()
                 else:
-                    api_key = os.getenv("ANTHROPIC_API_KEY")
+                    api_key = get_api_key("ANTHROPIC_API_KEY")
                     if not api_key:
-                        st.error("⚠️ Configure a variável de ambiente ANTHROPIC_API_KEY")
-                        st.code("export ANTHROPIC_API_KEY='sua-chave-aqui'")
+                        st.error("⚠️ Configure ANTHROPIC_API_KEY nos Secrets ou variáveis de ambiente")
+                        st.code("# Local: export ANTHROPIC_API_KEY='sua-chave'\n# Streamlit Cloud: adicione em Settings > Secrets")
                         st.stop()
 
                 with st.spinner(f"Gerando resposta com {llm_model}..."):
