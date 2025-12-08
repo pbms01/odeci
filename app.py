@@ -1210,53 +1210,40 @@ Cite as fontes usando [1], [2], etc.
         with st.expander("📝 Ver Prompt Completo"):
             st.code(prompt_template, language="markdown")
 
-        # Configuração do LLM
-        st.markdown("**Configuração do LLM:**")
+        # Configuração do LLM (apenas Anthropic)
+        st.markdown("**Configuração do LLM (Anthropic Claude):**")
 
-        col1, col2 = st.columns(2)
-        with col1:
-            llm_provider = st.selectbox(
-                "Provedor:",
-                ["openai", "anthropic"],
-                key="llm_provider"
-            )
-        with col2:
-            if llm_provider == "openai":
-                llm_model = st.selectbox(
-                    "Modelo:",
-                    ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"],
-                    key="llm_model"
-                )
-            else:
-                llm_model = st.selectbox(
-                    "Modelo:",
-                    ["claude-3-5-sonnet-20241022", "claude-3-haiku-20240307"],
-                    key="llm_model"
-                )
+        llm_model = st.selectbox(
+            "Modelo:",
+            [
+                "claude-opus-4-5-20251101",
+                "claude-sonnet-4-5-20250929",
+                "claude-3-5-sonnet-20241022",
+            ],
+            format_func=lambda x: {
+                "claude-opus-4-5-20251101": "Claude Opus 4.5 (mais capaz)",
+                "claude-sonnet-4-5-20250929": "Claude Sonnet 4.5 (equilibrado)",
+                "claude-3-5-sonnet-20241022": "Claude 3.5 Sonnet (rápido)",
+            }.get(x, x),
+            key="llm_model"
+        )
 
         # Botão para gerar resposta
         if st.button("🤖 Gerar Resposta com LLM", type="secondary"):
             try:
                 from src.generation import create_generator
 
-                # Verificar API key (suporta st.secrets e env vars)
-                if llm_provider == "openai":
-                    api_key = get_api_key("OPENAI_API_KEY")
-                    if not api_key:
-                        st.error("⚠️ Configure OPENAI_API_KEY nos Secrets ou variáveis de ambiente")
-                        st.code("# Local: export OPENAI_API_KEY='sua-chave'\n# Streamlit Cloud: adicione em Settings > Secrets")
-                        st.stop()
-                else:
-                    api_key = get_api_key("ANTHROPIC_API_KEY")
-                    if not api_key:
-                        st.error("⚠️ Configure ANTHROPIC_API_KEY nos Secrets ou variáveis de ambiente")
-                        st.code("# Local: export ANTHROPIC_API_KEY='sua-chave'\n# Streamlit Cloud: adicione em Settings > Secrets")
-                        st.stop()
+                # Verificar API key Anthropic
+                api_key = get_api_key("ANTHROPIC_API_KEY")
+                if not api_key:
+                    st.error("⚠️ Configure ANTHROPIC_API_KEY nos Secrets ou variáveis de ambiente")
+                    st.code("# Local: export ANTHROPIC_API_KEY='sua-chave'\n# Streamlit Cloud: adicione em Settings > Secrets")
+                    st.stop()
 
                 with st.spinner(f"Gerando resposta com {llm_model}..."):
-                    # Criar gerador
+                    # Criar gerador Anthropic
                     generator = create_generator(
-                        provider=llm_provider,
+                        provider="anthropic",
                         model=llm_model,
                         api_key=api_key,
                         temperature=0.1,

@@ -32,15 +32,20 @@ class GenerationResult:
         """Estimativa de custo (USD) baseado em preços típicos."""
         # Preços aproximados por 1K tokens
         prices = {
+            # OpenAI
             "gpt-4o": {"input": 0.005, "output": 0.015},
             "gpt-4o-mini": {"input": 0.00015, "output": 0.0006},
             "gpt-4-turbo": {"input": 0.01, "output": 0.03},
-            "claude-3-5-sonnet": {"input": 0.003, "output": 0.015},
-            "claude-3-haiku": {"input": 0.00025, "output": 0.00125},
+            # Anthropic Claude 4.x
+            "claude-opus-4-5-20251101": {"input": 0.015, "output": 0.075},
+            "claude-sonnet-4-5-20250929": {"input": 0.003, "output": 0.015},
+            # Anthropic Claude 3.x
+            "claude-3-5-sonnet-20241022": {"input": 0.003, "output": 0.015},
+            "claude-3-haiku-20240307": {"input": 0.00025, "output": 0.00125},
         }
 
-        # Usar preço do gpt-4o-mini como default
-        price = prices.get(self.model, prices["gpt-4o-mini"])
+        # Usar preço do claude-3-5-sonnet como default
+        price = prices.get(self.model, prices["claude-3-5-sonnet-20241022"])
 
         input_cost = (self.prompt_tokens / 1000) * price["input"]
         output_cost = (self.completion_tokens / 1000) * price["output"]
@@ -246,11 +251,12 @@ class AnthropicGenerator(BaseGenerator):
     Gerador usando API da Anthropic (Claude).
 
     Modelos recomendados:
-    - claude-3-5-sonnet-20241022: Melhor qualidade
-    - claude-3-haiku-20240307: Mais rápido e barato
+    - claude-opus-4-5-20251101: Mais capaz (Opus 4.5)
+    - claude-sonnet-4-5-20250929: Equilibrado (Sonnet 4.5)
+    - claude-3-5-sonnet-20241022: Rápido e econômico
     """
 
-    DEFAULT_MODEL = "claude-3-5-sonnet-20241022"
+    DEFAULT_MODEL = "claude-opus-4-5-20251101"
 
     DEFAULT_SYSTEM_PROMPT = """Você é um assistente especializado em análise de documentos jurídicos e tecnológicos.
 
