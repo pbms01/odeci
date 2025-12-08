@@ -15,8 +15,17 @@ import streamlit as st
 import tempfile
 import time
 import json
+import numpy as np
 from pathlib import Path
 from uuid import UUID
+
+try:
+    import plotly.express as px
+    import plotly.graph_objects as go
+    from sklearn.decomposition import PCA
+    PLOTLY_AVAILABLE = True
+except ImportError:
+    PLOTLY_AVAILABLE = False
 
 # Configuração da página
 st.set_page_config(
@@ -481,6 +490,224 @@ def render_step_3_embedding(chunks):
         - Tipo: float32
         - Normalizado: Sim (para distância de cosseno)
         """)
+
+    # Renderizar visualização do espaço de embeddings
+    render_embedding_visualization(chunks)
+
+
+def render_embedding_visualization(chunks):
+    """Renderiza visualização interativa do espaço de embeddings."""
+    if chunks is None:
+        return
+
+    st.markdown("---")
+    st.subheader("🌐 Visualização do Espaço de Embeddings")
+
+    if not PLOTLY_AVAILABLE:
+        st.warning("""
+        ⚠️ Para visualizar o espaço de embeddings, instale as dependências:
+        ```bash
+        pip install plotly scikit-learn
+        ```
+        """)
+        return
+
+    with st.expander("ℹ️ O que é esta visualização?", expanded=False):
+        st.markdown("""
+        **Redução de Dimensionalidade com PCA:**
+
+        Os embeddings originais têm 1024 dimensões, impossíveis de visualizar diretamente.
+        Usamos **PCA** (Principal Component Analysis) para reduzir a 2D ou 3D, preservando
+        a maior quantidade possível de variância (informação).
+
+        **O que observar:**
+        - **Clusters**: Chunks similares ficam próximos no espaço
+        - **Separação por domínio**: Cores diferentes mostram domínios semânticos
+        - **Outliers**: Pontos isolados podem indicar conteúdo único ou erros
+
+        **Limitações:**
+        - A redução de 1024 para 2/3D inevitavelmente perde informação
+        - A visualização é uma aproximação do espaço real
+        """)
+
+    all_chunks = chunks.get_all_chunks()
+
+    if len(all_chunks) < 3:
+        st.warning("⚠️ Mínimo de 3 chunks necessário para visualização.")
+        return
+
+    # Gerar embeddings simulados para demonstração
+    # Na prática, seriam os embeddings reais do modelo
+    st.info("💡 Embeddings simulados para demonstração. Em produção, usar embeddings reais do Voyage AI.")
+
+    np.random.seed(42)  # Reprodutibilidade
+
+    # Criar embeddings simulados com clusters baseados em domínio e nível
+    embeddings = []
+    metadata_list = []
+
+    domain_centroids = {
+        "legal": np.random.randn(1024) * 0.5,
+        "code": np.random.randn(1024) * 0.5 + 2,
+        "tech": np.random.randn(1024) * 0.5 + 4,
+        "general": np.random.randn(1024) * 0.5 + 6,
+    }
+
+    level_offsets = {
+        "parent": 0.3,
+        "child": 0.0,
+        "atomic": -0.3,
+    }
+
+    for chunk in all_chunks:
+        domain = chunk.metadata.domain
+        level = chunk.level.value
+
+        # Embedding baseado no centróide do domínio + ruído + offset do nível
+        centroid = domain_centroids.get(domain, domain_centroids["general"])
+        offset = level_offsets.get(level, 0)
+        noise = np.random.randn(1024) * 0.3
+        embedding = centroid + noise + offset
+
+        embeddings.append(embedding)
+        metadata_list.append({
+            "domain": domain,
+            "level": level,
+            "tokens": chunk.metadata.token_count,
+            "section": chunk.metadata.section or "Sem seção",
+            "text_preview": chunk.text[:100] + "..." if len(chunk.text) > 100 else chunk.text,
+        })
+
+    embeddings_array = np.array(embeddings)
+
+    # Configurações de visualização
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        n_dimensions = st.radio(
+            "Dimensões:",
+            [2, 3],
+            index=1,
+            horizontal=True,
+            help="2D é mais fácil de interpretar, 3D mostra mais estrutura"
+        )
+
+    with col2:
+        color_by = st.selectbox(
+            "Colorir por:",
+            ["domain", "level", "tokens"],
+            format_func=lambda x: {"domain": "Domínio", "level": "Nível", "tokens": "Tokens"}[x]
+        )
+
+    with col3:
+        point_size = st.slider("Tamanho dos pontos:", 3, 15, 8)
+
+    # Aplicar PCA
+    n_components = min(n_dimensions, len(embeddings_array) - 1, 3)
+    pca = PCA(n_components=n_components)
+    reduced = pca.fit_transform(embeddings_array)
+
+    # Variância explicada
+    variance_explained = pca.explained_variance_ratio_
+
+    var_cols = st.columns(n_components + 1)
+    with var_cols[0]:
+        st.metric("Total Variância", f"{sum(variance_explained)*100:.1f}%")
+    for i in range(n_components):
+        with var_cols[i + 1]:
+            st.metric(f"PC{i+1}", f"{variance_explained[i]*100:.1f}%")
+
+    # Preparar dados para plotly
+    import pandas as pd
+    df = pd.DataFrame(metadata_list)
+    df["PC1"] = reduced[:, 0]
+    df["PC2"] = reduced[:, 1]
+    if n_components >= 3:
+        df["PC3"] = reduced[:, 2]
+
+    # Definir cores
+    color_map_domain = {
+        "legal": "#2196F3",
+        "code": "#9C27B0",
+        "tech": "#4CAF50",
+        "general": "#FF9800"
+    }
+
+    color_map_level = {
+        "parent": "#2196F3",
+        "child": "#4CAF50",
+        "atomic": "#FF9800"
+    }
+
+    # Criar gráfico
+    if n_dimensions == 3 and n_components >= 3:
+        fig = px.scatter_3d(
+            df,
+            x="PC1",
+            y="PC2",
+            z="PC3",
+            color=color_by,
+            color_discrete_map=color_map_domain if color_by == "domain" else (color_map_level if color_by == "level" else None),
+            hover_data=["section", "domain", "level", "tokens", "text_preview"],
+            title="Espaço de Embeddings (PCA 3D)",
+            labels={
+                "PC1": f"PC1 ({variance_explained[0]*100:.1f}%)",
+                "PC2": f"PC2 ({variance_explained[1]*100:.1f}%)",
+                "PC3": f"PC3 ({variance_explained[2]*100:.1f}%)",
+                "domain": "Domínio",
+                "level": "Nível",
+                "tokens": "Tokens",
+            }
+        )
+
+        fig.update_traces(marker=dict(size=point_size))
+        fig.update_layout(
+            height=600,
+            scene=dict(
+                xaxis_title=f"PC1 ({variance_explained[0]*100:.1f}%)",
+                yaxis_title=f"PC2 ({variance_explained[1]*100:.1f}%)",
+                zaxis_title=f"PC3 ({variance_explained[2]*100:.1f}%)",
+            )
+        )
+    else:
+        fig = px.scatter(
+            df,
+            x="PC1",
+            y="PC2",
+            color=color_by,
+            color_discrete_map=color_map_domain if color_by == "domain" else (color_map_level if color_by == "level" else None),
+            hover_data=["section", "domain", "level", "tokens", "text_preview"],
+            title="Espaço de Embeddings (PCA 2D)",
+            labels={
+                "PC1": f"PC1 ({variance_explained[0]*100:.1f}%)",
+                "PC2": f"PC2 ({variance_explained[1]*100:.1f}%)",
+                "domain": "Domínio",
+                "level": "Nível",
+                "tokens": "Tokens",
+            }
+        )
+
+        fig.update_traces(marker=dict(size=point_size))
+        fig.update_layout(height=500)
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Estatísticas dos clusters
+    st.markdown("**📊 Estatísticas por Cluster:**")
+
+    stats_cols = st.columns(len(df["domain"].unique()))
+    for i, domain in enumerate(df["domain"].unique()):
+        domain_df = df[df["domain"] == domain]
+        with stats_cols[i]:
+            st.markdown(f"""
+            <div style="background: {color_map_domain.get(domain, '#gray')}22;
+                        padding: 10px; border-radius: 8px;
+                        border-left: 4px solid {color_map_domain.get(domain, '#gray')};">
+                <h4 style="margin: 0; color: {color_map_domain.get(domain, '#333')};">{domain.upper()}</h4>
+                <p style="margin: 5px 0; color: #1a1a1a;">Chunks: {len(domain_df)}</p>
+                <p style="margin: 5px 0; color: #1a1a1a;">Tokens médio: {domain_df['tokens'].mean():.0f}</p>
+            </div>
+            """, unsafe_allow_html=True)
 
 
 def render_step_4_storage(chunks):
