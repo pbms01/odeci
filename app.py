@@ -752,16 +752,17 @@ def render_search_process(query, chunks, top_k, use_rerank, include_parent):
                             key=f"parent_context_{i}"
                         )
 
-    # Etapa 5: Geração de resposta (simulada)
+    # Etapa 5: Geração de resposta com LLM
     with st.container():
         st.markdown("### 5️⃣ Geração de Resposta (RAG)")
 
         st.markdown("""
-        Com os chunks recuperados, um LLM pode gerar uma resposta fundamentada:
+        Com os chunks recuperados, um LLM gera uma resposta fundamentada:
         """)
 
         # Montar contexto
-        context = "\n\n".join([f"[{i+1}] {r['chunk'].text[:200]}..." for i, r in enumerate(final_results[:3])])
+        context_texts = [r['chunk'].text for r in final_results[:5]]
+        context_preview = "\n\n".join([f"[{i+1}] {text[:200]}..." for i, text in enumerate(context_texts[:3])])
 
         prompt_template = f"""
 **System Prompt:**
@@ -769,7 +770,7 @@ Você é um assistente especializado. Use APENAS o contexto fornecido para respo
 Cite as fontes usando [1], [2], etc.
 
 **Contexto:**
-{context}
+{context_preview}
 
 **Pergunta:** {query}
 
@@ -779,14 +780,117 @@ Cite as fontes usando [1], [2], etc.
         with st.expander("📝 Ver Prompt Completo"):
             st.code(prompt_template, language="markdown")
 
-        # Resposta simulada
-        st.markdown("**Resposta Gerada:**")
-        st.info("""
-        💡 **Nota:** A geração real de resposta requer integração com um LLM (GPT-4, Claude, etc.).
+        # Configuração do LLM
+        st.markdown("**Configuração do LLM:**")
 
-        O contexto recuperado seria enviado junto com a pergunta para gerar uma resposta
-        fundamentada nos documentos, reduzindo alucinações e permitindo citação de fontes.
-        """)
+        col1, col2 = st.columns(2)
+        with col1:
+            llm_provider = st.selectbox(
+                "Provedor:",
+                ["openai", "anthropic"],
+                key="llm_provider"
+            )
+        with col2:
+            if llm_provider == "openai":
+                llm_model = st.selectbox(
+                    "Modelo:",
+                    ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"],
+                    key="llm_model"
+                )
+            else:
+                llm_model = st.selectbox(
+                    "Modelo:",
+                    ["claude-3-5-sonnet-20241022", "claude-3-haiku-20240307"],
+                    key="llm_model"
+                )
+
+        # Botão para gerar resposta
+        if st.button("🤖 Gerar Resposta com LLM", type="secondary"):
+            try:
+                from src.generation import create_generator
+                import os
+
+                # Verificar API key
+                if llm_provider == "openai":
+                    api_key = os.getenv("OPENAI_API_KEY")
+                    if not api_key:
+                        st.error("⚠️ Configure a variável de ambiente OPENAI_API_KEY")
+                        st.code("export OPENAI_API_KEY='sua-chave-aqui'")
+                        st.stop()
+                else:
+                    api_key = os.getenv("ANTHROPIC_API_KEY")
+                    if not api_key:
+                        st.error("⚠️ Configure a variável de ambiente ANTHROPIC_API_KEY")
+                        st.code("export ANTHROPIC_API_KEY='sua-chave-aqui'")
+                        st.stop()
+
+                with st.spinner(f"Gerando resposta com {llm_model}..."):
+                    # Criar gerador
+                    generator = create_generator(
+                        provider=llm_provider,
+                        model=llm_model,
+                        api_key=api_key,
+                        temperature=0.1,
+                        max_tokens=1024
+                    )
+
+                    # Preparar metadados das fontes
+                    sources_metadata = [
+                        {
+                            "section": r['chunk'].metadata.section or "N/A",
+                            "domain": r['chunk'].metadata.domain,
+                            "score": r['rerank_score'] if use_rerank else r['score']
+                        }
+                        for r in final_results[:5]
+                    ]
+
+                    # Gerar resposta
+                    result = generator.generate(
+                        query=query,
+                        context=context_texts,
+                        sources_metadata=sources_metadata
+                    )
+
+                    # Exibir resposta
+                    st.markdown("---")
+                    st.markdown("**🤖 Resposta Gerada:**")
+                    st.markdown(result.answer)
+
+                    # Métricas
+                    st.markdown("---")
+                    st.markdown("**📊 Métricas de Geração:**")
+
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("Modelo", result.model)
+                    with col2:
+                        st.metric("Tokens Prompt", f"{result.prompt_tokens:,}")
+                    with col3:
+                        st.metric("Tokens Resposta", f"{result.completion_tokens:,}")
+                    with col4:
+                        st.metric("Custo Est.", f"${result.cost_estimate:.4f}")
+
+                    # Fontes utilizadas
+                    if result.sources:
+                        st.markdown("**📚 Fontes Citadas:**")
+                        for src in result.sources:
+                            st.markdown(f"- [{src['index']}] Seção: {src['section']} | Domínio: {src['domain']} | Score: {src['score']:.4f}")
+
+            except ImportError as e:
+                st.error(f"Erro de importação: {e}")
+                st.info("Certifique-se de que os pacotes 'openai' ou 'anthropic' estão instalados.")
+            except Exception as e:
+                st.error(f"Erro na geração: {e}")
+                import traceback
+                with st.expander("Ver detalhes do erro"):
+                    st.code(traceback.format_exc())
+        else:
+            st.info("""
+            💡 **Clique no botão acima para gerar uma resposta real com LLM.**
+
+            O contexto recuperado será enviado junto com a pergunta para gerar uma resposta
+            fundamentada nos documentos, reduzindo alucinações e permitindo citação de fontes.
+            """)
 
     # Salvar no histórico
     st.session_state.search_history.append({
