@@ -127,8 +127,8 @@ def render_pipeline_diagram():
 
     with col1:
         st.markdown("""
-        <div style="text-align: center; padding: 20px; background: #e3f2fd; border-radius: 10px;">
-            <h3>📄</h3>
+        <div style="text-align: center; padding: 20px; background: #e3f2fd; border-radius: 10px; color: #1a1a1a;">
+            <h3 style="margin: 0; color: #1565c0;">📄</h3>
             <b>1. Documento</b>
             <br><small>PDF, DOCX, TXT</small>
         </div>
@@ -136,8 +136,8 @@ def render_pipeline_diagram():
 
     with col2:
         st.markdown("""
-        <div style="text-align: center; padding: 20px; background: #e8f5e9; border-radius: 10px;">
-            <h3>✂️</h3>
+        <div style="text-align: center; padding: 20px; background: #e8f5e9; border-radius: 10px; color: #1a1a1a;">
+            <h3 style="margin: 0; color: #2e7d32;">✂️</h3>
             <b>2. Chunking</b>
             <br><small>Hierárquico</small>
         </div>
@@ -145,17 +145,17 @@ def render_pipeline_diagram():
 
     with col3:
         st.markdown("""
-        <div style="text-align: center; padding: 20px; background: #fff3e0; border-radius: 10px;">
-            <h3>🧮</h3>
+        <div style="text-align: center; padding: 20px; background: #fff3e0; border-radius: 10px; color: #1a1a1a;">
+            <h3 style="margin: 0; color: #e65100;">🧮</h3>
             <b>3. Embedding</b>
-            <br><small>Multi-modelo</small>
+            <br><small>Modelo único</small>
         </div>
         """, unsafe_allow_html=True)
 
     with col4:
         st.markdown("""
-        <div style="text-align: center; padding: 20px; background: #f3e5f5; border-radius: 10px;">
-            <h3>🗄️</h3>
+        <div style="text-align: center; padding: 20px; background: #f3e5f5; border-radius: 10px; color: #1a1a1a;">
+            <h3 style="margin: 0; color: #7b1fa2;">🗄️</h3>
             <b>4. Vector DB</b>
             <br><small>Qdrant/Chroma</small>
         </div>
@@ -163,8 +163,8 @@ def render_pipeline_diagram():
 
     with col5:
         st.markdown("""
-        <div style="text-align: center; padding: 20px; background: #ffebee; border-radius: 10px;">
-            <h3>🔍</h3>
+        <div style="text-align: center; padding: 20px; background: #ffebee; border-radius: 10px; color: #1a1a1a;">
+            <h3 style="margin: 0; color: #c62828;">🔍</h3>
             <b>5. Retrieval</b>
             <br><small>+ Reranking</small>
         </div>
@@ -313,25 +313,25 @@ def render_step_2_chunking(document, config):
                 col1, col2, col3 = st.columns(3)
                 with col1:
                     st.markdown("""
-                    <div style="background: #e3f2fd; padding: 15px; border-radius: 10px; text-align: center;">
-                        <h2 style="color: #1976D2; margin: 0;">🔵 {}</h2>
-                        <p style="margin: 0;">Parent Chunks</p>
+                    <div style="background: #e3f2fd; padding: 15px; border-radius: 10px; text-align: center; color: #1a1a1a;">
+                        <h2 style="color: #1565c0; margin: 0;">🔵 {}</h2>
+                        <p style="margin: 0; color: #1a1a1a;">Parent Chunks</p>
                     </div>
                     """.format(len(collection.parent_chunks)), unsafe_allow_html=True)
 
                 with col2:
                     st.markdown("""
-                    <div style="background: #e8f5e9; padding: 15px; border-radius: 10px; text-align: center;">
-                        <h2 style="color: #388E3C; margin: 0;">🟢 {}</h2>
-                        <p style="margin: 0;">Child Chunks</p>
+                    <div style="background: #e8f5e9; padding: 15px; border-radius: 10px; text-align: center; color: #1a1a1a;">
+                        <h2 style="color: #2e7d32; margin: 0;">🟢 {}</h2>
+                        <p style="margin: 0; color: #1a1a1a;">Child Chunks</p>
                     </div>
                     """.format(len(collection.child_chunks)), unsafe_allow_html=True)
 
                 with col3:
                     st.markdown("""
-                    <div style="background: #fff3e0; padding: 15px; border-radius: 10px; text-align: center;">
-                        <h2 style="color: #F57C00; margin: 0;">🟠 {}</h2>
-                        <p style="margin: 0;">Atomic Chunks</p>
+                    <div style="background: #fff3e0; padding: 15px; border-radius: 10px; text-align: center; color: #1a1a1a;">
+                        <h2 style="color: #e65100; margin: 0;">🟠 {}</h2>
+                        <p style="margin: 0; color: #1a1a1a;">Atomic Chunks</p>
                     </div>
                     """.format(len(collection.atomic_chunks)), unsafe_allow_html=True)
 
@@ -357,9 +357,9 @@ def render_step_2_chunking(document, config):
                     with cols[i]:
                         st.markdown(f"""
                         <div style="background: {domain_colors.get(domain, '#f5f5f5')};
-                                    padding: 15px; border-radius: 10px; text-align: center;">
-                            <h3 style="margin: 0;">{domain_icons.get(domain, '📄')} {count}</h3>
-                            <p style="margin: 0; text-transform: uppercase;">{domain}</p>
+                                    padding: 15px; border-radius: 10px; text-align: center; color: #1a1a1a;">
+                            <h3 style="margin: 0; color: #1a1a1a;">{domain_icons.get(domain, '📄')} {count}</h3>
+                            <p style="margin: 0; text-transform: uppercase; color: #1a1a1a;">{domain}</p>
                         </div>
                         """, unsafe_allow_html=True)
 
@@ -418,12 +418,14 @@ def render_step_3_embedding(chunks):
         - Permitem busca por similaridade usando distância de cosseno
         - Capturam nuances de significado além de palavras-chave
 
-        **Modelos especializados ODECI:**
-        | Domínio | Modelo | Especialização |
-        |---------|--------|----------------|
-        | ⚖️ Legal | voyage-law-2 | Textos jurídicos |
-        | 💻 Code | voyage-code-3 | Código e documentação técnica |
-        | 🔧 Tech/General | voyage-3-large | Conteúdo geral |
+        **Modelo utilizado: `voyage-3-large`**
+
+        | Característica | Valor |
+        |----------------|-------|
+        | Modelo | voyage-3-large |
+        | Dimensões | 1024 |
+        | Tipo | Generalista de alta qualidade |
+        | Vantagem | Um único espaço vetorial para todos os domínios |
         """)
 
     if chunks is None:
@@ -438,26 +440,24 @@ def render_step_3_embedding(chunks):
     # Simulação do processo
     st.subheader("📊 Processo de Embedding")
 
-    # Mostrar distribuição por modelo
     all_chunks = chunks.get_all_chunks()
 
-    model_distribution = {}
+    # Mostrar modelo único
+    st.markdown("**Modelo Único:** `voyage-3-large`")
+    st.progress(1.0, text=f"Todos os {len(all_chunks)} chunks usam o mesmo modelo")
+
+    # Mostrar distribuição por domínio (classificação, não modelo)
+    st.markdown("**Classificação por Domínio (metadados):**")
+
+    domain_counts = {}
     for chunk in all_chunks:
         domain = chunk.metadata.domain
-        if domain in ["legal"]:
-            model = "voyage-law-2"
-        elif domain in ["code"]:
-            model = "voyage-code-3"
-        else:
-            model = "voyage-3-large"
-        model_distribution[model] = model_distribution.get(model, 0) + 1
+        domain_counts[domain] = domain_counts.get(domain, 0) + 1
 
-    st.markdown("**Roteamento por Modelo:**")
-
-    for model, count in model_distribution.items():
+    for domain, count in sorted(domain_counts.items(), key=lambda x: x[1], reverse=True):
         col1, col2 = st.columns([3, 1])
         with col1:
-            st.progress(count / len(all_chunks), text=f"{model}")
+            st.progress(count / len(all_chunks), text=f"{domain}")
         with col2:
             st.write(f"{count} chunks")
 
