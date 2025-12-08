@@ -554,21 +554,27 @@ def render_step_3_embedding(chunks):
         st.warning("⚠️ Execute o chunking primeiro.")
         return
 
-    st.info("""
-    💡 **Nota:** A geração real de embeddings requer a chave da API Voyage AI.
-    Nesta demonstração, mostramos como o processo funcionaria.
-    """)
+    # Verificar se API key está disponível
+    voyage_api_key = get_api_key("VOYAGE_API_KEY")
+    has_api_key = voyage_api_key is not None and len(voyage_api_key) > 10
 
-    # Simulação do processo
+    if has_api_key:
+        st.success("✅ API Voyage AI configurada - embeddings reais disponíveis")
+    else:
+        st.warning("""
+        ⚠️ **API Voyage AI não configurada** - usando embeddings simulados para demonstração.
+        Configure `VOYAGE_API_KEY` para gerar embeddings reais.
+        """)
+
+    # Processo de Embedding
     st.subheader("📊 Processo de Embedding")
 
     all_chunks = chunks.get_all_chunks()
 
     # Mostrar modelo único
-    st.markdown("**Modelo Único:** `voyage-3-large`")
-    st.progress(1.0, text=f"Todos os {len(all_chunks)} chunks usam o mesmo modelo")
+    st.markdown("**Modelo:** `voyage-3-large` (1024 dimensões)")
 
-    # Mostrar distribuição por domínio (classificação, não modelo)
+    # Mostrar distribuição por domínio
     st.markdown("**Classificação por Domínio (metadados):**")
 
     domain_counts = {}
@@ -583,26 +589,126 @@ def render_step_3_embedding(chunks):
         with col2:
             st.write(f"{count} chunks")
 
-    # Demonstração visual
-    st.subheader("🔢 Exemplo de Embedding")
+    # Botão para gerar embeddings
+    st.markdown("---")
 
-    if all_chunks:
-        sample_chunk = all_chunks[0]
+    if "embeddings_generated" not in st.session_state:
+        st.session_state.embeddings_generated = False
+        st.session_state.embeddings_data = None
+
+    if st.button("🧮 Gerar Embeddings", type="primary"):
+        if has_api_key:
+            # Gerar embeddings reais com Voyage AI
+            with st.spinner("Gerando embeddings com Voyage AI..."):
+                try:
+                    import voyageai
+
+                    client = voyageai.Client(api_key=voyage_api_key)
+
+                    # Preparar textos
+                    texts = [chunk.text for chunk in all_chunks]
+
+                    # Gerar embeddings em batches
+                    progress = st.progress(0, text="Iniciando...")
+                    embeddings = []
+                    batch_size = 8  # Voyage AI recomenda batches pequenos
+
+                    for i in range(0, len(texts), batch_size):
+                        batch = texts[i:i + batch_size]
+                        result = client.embed(
+                            batch,
+                            model="voyage-3-large",
+                            input_type="document"
+                        )
+                        embeddings.extend(result.embeddings)
+
+                        progress_pct = min((i + batch_size) / len(texts), 1.0)
+                        progress.progress(progress_pct, text=f"Processando {min(i + batch_size, len(texts))}/{len(texts)} chunks...")
+
+                    progress.progress(1.0, text="Embeddings gerados!")
+
+                    # Armazenar no session state
+                    st.session_state.embeddings_data = {
+                        "embeddings": embeddings,
+                        "chunks": all_chunks,
+                        "model": "voyage-3-large",
+                        "dimensions": len(embeddings[0]) if embeddings else 1024,
+                        "is_real": True
+                    }
+                    st.session_state.embeddings_generated = True
+
+                    st.success(f"✅ {len(embeddings)} embeddings gerados com sucesso!")
+
+                    # Mostrar métricas
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Total Embeddings", len(embeddings))
+                    with col2:
+                        st.metric("Dimensões", len(embeddings[0]))
+                    with col3:
+                        st.metric("Modelo", "voyage-3-large")
+
+                except Exception as e:
+                    st.error(f"Erro ao gerar embeddings: {e}")
+                    import traceback
+                    with st.expander("Ver detalhes do erro"):
+                        st.code(traceback.format_exc())
+        else:
+            # Gerar embeddings simulados
+            with st.spinner("Gerando embeddings simulados..."):
+                time.sleep(1)
+
+                # Criar embeddings simulados com clusters baseados em domínio
+                np.random.seed(42)
+
+                domain_centroids = {
+                    "legal": np.random.randn(1024) * 0.5,
+                    "code": np.random.randn(1024) * 0.5 + 2,
+                    "tech": np.random.randn(1024) * 0.5 + 4,
+                    "general": np.random.randn(1024) * 0.5 + 6,
+                }
+
+                embeddings = []
+                for chunk in all_chunks:
+                    domain = chunk.metadata.domain
+                    centroid = domain_centroids.get(domain, domain_centroids["general"])
+                    noise = np.random.randn(1024) * 0.3
+                    embedding = (centroid + noise).tolist()
+                    embeddings.append(embedding)
+
+                st.session_state.embeddings_data = {
+                    "embeddings": embeddings,
+                    "chunks": all_chunks,
+                    "model": "simulado",
+                    "dimensions": 1024,
+                    "is_real": False
+                }
+                st.session_state.embeddings_generated = True
+
+                st.info(f"💡 {len(embeddings)} embeddings simulados gerados para demonstração")
+
+    # Mostrar exemplo de embedding se já foram gerados
+    if st.session_state.embeddings_generated and st.session_state.embeddings_data:
+        st.subheader("🔢 Exemplo de Embedding")
+
+        data = st.session_state.embeddings_data
+        sample_idx = 0
+        sample_chunk = data["chunks"][sample_idx]
+        sample_embedding = data["embeddings"][sample_idx]
+
         st.markdown(f"**Texto:** _{sample_chunk.text[:200]}..._")
+        st.markdown(f"**Tipo:** {'Real (Voyage AI)' if data['is_real'] else 'Simulado'}")
 
-        # Simular embedding
-        import random
-        fake_embedding = [round(random.uniform(-1, 1), 4) for _ in range(10)]
-
-        st.markdown("**Vetor (primeiras 10 de 1024 dimensões):**")
-        st.code(f"[{', '.join(map(str, fake_embedding))}, ...]")
+        st.markdown(f"**Vetor (primeiras 10 de {data['dimensions']} dimensões):**")
+        embedding_preview = [round(v, 4) for v in sample_embedding[:10]]
+        st.code(f"[{', '.join(map(str, embedding_preview))}, ...]")
 
         st.markdown("""
         **Propriedades do vetor:**
-        - Dimensões: 1024
+        - Dimensões: {}
         - Tipo: float32
         - Normalizado: Sim (para distância de cosseno)
-        """)
+        """.format(data['dimensions']))
 
     # Renderizar visualização do espaço de embeddings
     render_embedding_visualization(chunks)
@@ -611,6 +717,11 @@ def render_step_3_embedding(chunks):
 def render_embedding_visualization(chunks):
     """Renderiza visualização interativa do espaço de embeddings."""
     if chunks is None:
+        return
+
+    # Verificar se embeddings foram gerados
+    if not st.session_state.get("embeddings_generated") or not st.session_state.get("embeddings_data"):
+        st.info("💡 Clique em **Gerar Embeddings** acima para visualizar o espaço vetorial.")
         return
 
     st.markdown("---")
@@ -624,6 +735,15 @@ def render_embedding_visualization(chunks):
         ```
         """)
         return
+
+    # Obter dados dos embeddings
+    data = st.session_state.embeddings_data
+    is_real = data.get("is_real", False)
+
+    if is_real:
+        st.success("🎯 Visualizando embeddings **reais** gerados pelo Voyage AI")
+    else:
+        st.info("💡 Visualizando embeddings **simulados** para demonstração")
 
     with st.expander("ℹ️ O que é esta visualização?", expanded=False):
         st.markdown("""
@@ -643,49 +763,19 @@ def render_embedding_visualization(chunks):
         - A visualização é uma aproximação do espaço real
         """)
 
-    all_chunks = chunks.get_all_chunks()
+    all_chunks = data["chunks"]
+    embeddings = data["embeddings"]
 
     if len(all_chunks) < 3:
         st.warning("⚠️ Mínimo de 3 chunks necessário para visualização.")
         return
 
-    # Gerar embeddings simulados para demonstração
-    # Na prática, seriam os embeddings reais do modelo
-    st.info("💡 Embeddings simulados para demonstração. Em produção, usar embeddings reais do Voyage AI.")
-
-    np.random.seed(42)  # Reprodutibilidade
-
-    # Criar embeddings simulados com clusters baseados em domínio e nível
-    embeddings = []
+    # Preparar metadados para visualização
     metadata_list = []
-
-    domain_centroids = {
-        "legal": np.random.randn(1024) * 0.5,
-        "code": np.random.randn(1024) * 0.5 + 2,
-        "tech": np.random.randn(1024) * 0.5 + 4,
-        "general": np.random.randn(1024) * 0.5 + 6,
-    }
-
-    level_offsets = {
-        "parent": 0.3,
-        "child": 0.0,
-        "atomic": -0.3,
-    }
-
     for chunk in all_chunks:
-        domain = chunk.metadata.domain
-        level = chunk.level.value
-
-        # Embedding baseado no centróide do domínio + ruído + offset do nível
-        centroid = domain_centroids.get(domain, domain_centroids["general"])
-        offset = level_offsets.get(level, 0)
-        noise = np.random.randn(1024) * 0.3
-        embedding = centroid + noise + offset
-
-        embeddings.append(embedding)
         metadata_list.append({
-            "domain": domain,
-            "level": level,
+            "domain": chunk.metadata.domain,
+            "level": chunk.level.value,
             "tokens": chunk.metadata.token_count,
             "section": chunk.metadata.section or "Sem seção",
             "text_preview": chunk.text[:100] + "..." if len(chunk.text) > 100 else chunk.text,
