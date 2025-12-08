@@ -913,6 +913,258 @@ def render_embedding_visualization(chunks):
             """, unsafe_allow_html=True)
 
 
+def render_attention_path(query: str, results: list, chunks):
+    """
+    Renderiza visualização 3D do caminho de atenção entre query e chunks recuperados.
+
+    Mostra:
+    - Todos os chunks no espaço vetorial (PCA 3D)
+    - Chunks recuperados destacados
+    - Linhas conectando o centro da query aos chunks selecionados
+    - Estatísticas de recuperação
+    """
+    if not PLOTLY_AVAILABLE:
+        st.warning("Plotly não disponível para visualização de atenção.")
+        return
+
+    # Verificar se temos embeddings
+    if not st.session_state.get("embeddings_data"):
+        st.info("💡 Gere os embeddings na aba 'Embedding' para visualizar o caminho de atenção.")
+        return
+
+    st.markdown("---")
+    st.subheader("🔗 Visualização do Caminho de Atenção")
+
+    with st.expander("ℹ️ O que é esta visualização?", expanded=False):
+        st.markdown("""
+        **Caminho de Atenção (Attention Path):**
+
+        Esta visualização mostra como o sistema RAG "presta atenção" aos diferentes
+        chunks do documento para responder à sua pergunta.
+
+        **Elementos visuais:**
+        - **Pontos coloridos:** Todos os chunks no espaço vetorial
+        - **Pontos destacados (maiores):** Chunks selecionados como contexto
+        - **Linhas:** Conexões entre a query e os chunks recuperados
+        - **Centro (★):** Posição média da query no espaço
+
+        **O que observar:**
+        - Chunks próximos tendem a ser semanticamente similares
+        - As linhas mostram quais regiões do espaço foram "consultadas"
+        - A distribuição dos chunks selecionados indica a cobertura temática
+        """)
+
+    data = st.session_state.embeddings_data
+    all_chunks = data["chunks"]
+    embeddings = data["embeddings"]
+
+    if len(all_chunks) < 3:
+        st.warning("Poucos chunks para visualização.")
+        return
+
+    # IDs dos chunks recuperados
+    retrieved_ids = set()
+    for r in results:
+        chunk = r.get("chunk")
+        if chunk:
+            retrieved_ids.add(id(chunk))
+
+    # Aplicar PCA para 3D
+    embeddings_array = np.array(embeddings)
+    n_components = min(3, len(embeddings_array) - 1)
+    pca = PCA(n_components=n_components)
+    reduced = pca.fit_transform(embeddings_array)
+
+    # Preparar dados
+    import pandas as pd
+
+    metadata_list = []
+    is_retrieved = []
+    scores = []
+
+    for i, chunk in enumerate(all_chunks):
+        # Verificar se este chunk foi recuperado
+        chunk_retrieved = id(chunk) in retrieved_ids
+        is_retrieved.append(chunk_retrieved)
+
+        # Encontrar score se recuperado
+        score = 0.0
+        for r in results:
+            if r.get("chunk") and id(r["chunk"]) == id(chunk):
+                score = r.get("rerank_score") or r.get("score", 0)
+                break
+        scores.append(score)
+
+        metadata_list.append({
+            "domain": chunk.metadata.domain,
+            "level": chunk.level.value,
+            "tokens": chunk.metadata.token_count,
+            "section": chunk.metadata.section or "Sem seção",
+            "text_preview": chunk.text[:80] + "..." if len(chunk.text) > 80 else chunk.text,
+            "retrieved": "Recuperado" if chunk_retrieved else "Não usado",
+            "score": score,
+        })
+
+    df = pd.DataFrame(metadata_list)
+    df["PC1"] = reduced[:, 0]
+    df["PC2"] = reduced[:, 1]
+    df["PC3"] = reduced[:, 2] if n_components >= 3 else 0
+    df["is_retrieved"] = is_retrieved
+    df["size"] = [12 if r else 5 for r in is_retrieved]
+
+    # Calcular centro da query (média dos chunks recuperados)
+    retrieved_indices = [i for i, r in enumerate(is_retrieved) if r]
+    if retrieved_indices:
+        query_center = reduced[retrieved_indices].mean(axis=0)
+    else:
+        query_center = reduced.mean(axis=0)
+
+    # Criar traces
+    traces = []
+
+    # 1. Todos os chunks (não recuperados) - cinza
+    df_not_retrieved = df[~df["is_retrieved"]]
+    if len(df_not_retrieved) > 0:
+        traces.append(go.Scatter3d(
+            x=df_not_retrieved["PC1"],
+            y=df_not_retrieved["PC2"],
+            z=df_not_retrieved["PC3"],
+            mode="markers",
+            marker=dict(
+                size=5,
+                color="#e5e7eb",
+                opacity=0.5,
+            ),
+            text=df_not_retrieved["text_preview"],
+            hovertemplate="<b>%{text}</b><br>Domínio: %{customdata[0]}<br>Nível: %{customdata[1]}<extra></extra>",
+            customdata=df_not_retrieved[["domain", "level"]].values,
+            name="Corpus",
+            showlegend=True,
+        ))
+
+    # 2. Chunks recuperados - coloridos por domínio
+    df_retrieved = df[df["is_retrieved"]]
+    domain_colors = {
+        "legal": "#3b82f6",
+        "code": "#8b5cf6",
+        "tech": "#10b981",
+        "general": "#f59e0b"
+    }
+
+    if len(df_retrieved) > 0:
+        colors = [domain_colors.get(d, "#6b7280") for d in df_retrieved["domain"]]
+        traces.append(go.Scatter3d(
+            x=df_retrieved["PC1"],
+            y=df_retrieved["PC2"],
+            z=df_retrieved["PC3"],
+            mode="markers",
+            marker=dict(
+                size=12,
+                color=colors,
+                opacity=0.9,
+                line=dict(width=2, color="white"),
+            ),
+            text=df_retrieved.apply(
+                lambda r: f"Score: {r['score']:.3f}<br>{r['text_preview']}", axis=1
+            ),
+            hovertemplate="<b>%{text}</b><extra></extra>",
+            name="Recuperados",
+            showlegend=True,
+        ))
+
+    # 3. Centro da query
+    traces.append(go.Scatter3d(
+        x=[query_center[0]],
+        y=[query_center[1]],
+        z=[query_center[2] if len(query_center) > 2 else 0],
+        mode="markers+text",
+        marker=dict(
+            size=15,
+            color="#dc2626",
+            symbol="diamond",
+            line=dict(width=2, color="white"),
+        ),
+        text=["Query"],
+        textposition="top center",
+        name="Query",
+        showlegend=True,
+    ))
+
+    # 4. Linhas de atenção (do centro para os chunks recuperados)
+    for i, (idx, row) in enumerate(df_retrieved.iterrows()):
+        opacity = 0.8 - (i * 0.1)  # Diminui opacidade por ranking
+        traces.append(go.Scatter3d(
+            x=[query_center[0], row["PC1"]],
+            y=[query_center[1], row["PC2"]],
+            z=[query_center[2] if len(query_center) > 2 else 0, row["PC3"]],
+            mode="lines",
+            line=dict(
+                color=domain_colors.get(row["domain"], "#6b7280"),
+                width=4,
+            ),
+            opacity=max(0.3, opacity),
+            hoverinfo="skip",
+            showlegend=False,
+        ))
+
+    # Layout
+    fig = go.Figure(data=traces)
+    fig.update_layout(
+        scene=dict(
+            xaxis_title="PC1",
+            yaxis_title="PC2",
+            zaxis_title="PC3",
+            camera=dict(eye=dict(x=1.5, y=1.5, z=1.2)),
+        ),
+        height=550,
+        margin=dict(l=0, r=0, t=30, b=0),
+        legend=dict(
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=0.01,
+            bgcolor="rgba(255,255,255,0.8)",
+        ),
+        title=dict(
+            text=f"Caminho de Atenção: \"{query[:50]}...\"" if len(query) > 50 else f"Caminho de Atenção: \"{query}\"",
+            font=dict(size=14),
+        ),
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Estatísticas
+    st.markdown("**📊 Estatísticas de Atenção:**")
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Chunks Usados", len(df_retrieved))
+    with col2:
+        st.metric("Total Corpus", len(df))
+    with col3:
+        coverage = len(df_retrieved) / len(df) * 100 if len(df) > 0 else 0
+        st.metric("Cobertura", f"{coverage:.1f}%")
+    with col4:
+        avg_score = df_retrieved["score"].mean() if len(df_retrieved) > 0 else 0
+        st.metric("Score Médio", f"{avg_score:.3f}")
+
+    # Distribuição por domínio dos recuperados
+    if len(df_retrieved) > 0:
+        st.markdown("**Distribuição dos chunks recuperados:**")
+        domain_dist = df_retrieved["domain"].value_counts()
+        cols = st.columns(len(domain_dist))
+        for i, (domain, count) in enumerate(domain_dist.items()):
+            with cols[i]:
+                color = domain_colors.get(domain, "#6b7280")
+                st.markdown(f"""
+                <div style="background: {color}22; padding: 8px; border-radius: 6px;
+                            border-left: 3px solid {color}; text-align: center;">
+                    <strong style="color: {color};">{domain.upper()}</strong><br>
+                    <span style="font-size: 1.2em; color: #1a1a1a;">{count}</span>
+                </div>
+                """, unsafe_allow_html=True)
+
+
 def render_step_4_storage(chunks):
     """Etapa 4: Armazenamento vetorial."""
     st.header("🗄️ Etapa 4: Armazenamento Vetorial")
@@ -1291,6 +1543,9 @@ Cite as fontes usando [1], [2], etc.
                         st.markdown("**📚 Fontes Citadas:**")
                         for src in result.sources:
                             st.markdown(f"- [{src['index']}] Seção: {src['section']} | Domínio: {src['domain']} | Score: {src['score']:.4f}")
+
+                    # Visualização do caminho de atenção
+                    render_attention_path(query, final_results, chunks)
 
             except ImportError as e:
                 st.error(f"Erro de importação: {e}")
