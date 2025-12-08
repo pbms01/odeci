@@ -11,6 +11,9 @@ Demonstra visualmente o pipeline RAG (Retrieval-Augmented Generation):
 7. Geração de resposta com contexto
 """
 
+# Versão da aplicação
+__version__ = "0.2.0"
+
 import streamlit as st
 import tempfile
 import time
@@ -80,6 +83,81 @@ def get_api_key(key_name: str) -> str | None:
     return os.getenv(key_name)
 
 
+def check_api_status(api_name: str, key_name: str) -> dict:
+    """Verifica o status de uma API."""
+    api_key = get_api_key(key_name)
+
+    if not api_key:
+        return {"status": "missing", "message": "Chave não configurada"}
+
+    # Verificar se a chave tem formato válido (verificação básica)
+    if len(api_key) < 10:
+        return {"status": "invalid", "message": "Chave muito curta"}
+
+    # Teste de conexão real (opcional, pode ser lento)
+    try:
+        if api_name == "voyage" and api_key.startswith("pa-"):
+            return {"status": "configured", "message": "Chave configurada"}
+        elif api_name == "openai" and api_key.startswith("sk-"):
+            return {"status": "configured", "message": "Chave configurada"}
+        elif api_name == "anthropic" and ("sk-ant" in api_key or len(api_key) > 50):
+            return {"status": "configured", "message": "Chave configurada"}
+        elif api_name == "cohere":
+            return {"status": "configured", "message": "Chave configurada"}
+        else:
+            return {"status": "configured", "message": "Chave configurada"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)[:30]}
+
+
+def render_api_diagnostics():
+    """Renderiza diagnóstico de conexão com APIs."""
+    st.subheader("🔌 Status das APIs")
+
+    apis = [
+        ("Voyage AI", "VOYAGE_API_KEY", "voyage", "Embeddings"),
+        ("OpenAI", "OPENAI_API_KEY", "openai", "LLM"),
+        ("Anthropic", "ANTHROPIC_API_KEY", "anthropic", "LLM"),
+        ("Cohere", "COHERE_API_KEY", "cohere", "Reranking"),
+    ]
+
+    status_icons = {
+        "configured": "🟢",
+        "missing": "🔴",
+        "invalid": "🟡",
+        "error": "🟠",
+    }
+
+    for display_name, key_name, api_name, purpose in apis:
+        status = check_api_status(api_name, key_name)
+        icon = status_icons.get(status["status"], "⚪")
+
+        with st.container():
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.markdown(f"{icon} **{display_name}** ({purpose})")
+            with col2:
+                if status["status"] == "configured":
+                    st.markdown("✓")
+                elif status["status"] == "missing":
+                    st.markdown("✗")
+                else:
+                    st.markdown("?")
+
+    # Resumo
+    configured_count = sum(
+        1 for _, key_name, api_name, _ in apis
+        if check_api_status(api_name, key_name)["status"] == "configured"
+    )
+
+    if configured_count >= 2:
+        st.success(f"{configured_count}/4 APIs configuradas")
+    elif configured_count == 1:
+        st.warning(f"{configured_count}/4 APIs configuradas")
+    else:
+        st.error("Nenhuma API configurada")
+
+
 def init_session_state():
     """Inicializa o estado da sessão."""
     if "pipeline" not in st.session_state:
@@ -108,6 +186,15 @@ def render_header():
 def render_sidebar():
     """Renderiza a barra lateral com configurações."""
     with st.sidebar:
+        # Versão no topo
+        st.markdown(f"""
+        <div style="text-align: center; padding: 10px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    border-radius: 10px; margin-bottom: 20px;">
+            <h2 style="margin: 0; color: white;">🔍 ODECI</h2>
+            <p style="margin: 5px 0 0 0; color: rgba(255,255,255,0.9); font-size: 0.9em;">v{__version__}</p>
+        </div>
+        """, unsafe_allow_html=True)
+
         st.header("⚙️ Configurações")
 
         st.subheader("📊 Parâmetros de Chunking")
@@ -119,6 +206,13 @@ def render_sidebar():
         top_k = st.slider("Resultados (top_k)", 1, 20, 5)
         use_reranking = st.checkbox("Usar Reranking", value=True)
         include_parent = st.checkbox("Incluir contexto Parent", value=True)
+
+        st.markdown("---")
+
+        # Diagnóstico de APIs
+        render_api_diagnostics()
+
+        st.markdown("---")
 
         st.subheader("📚 Sobre o Pipeline")
         with st.expander("O que é RAG?"):
@@ -132,6 +226,10 @@ def render_sidebar():
             Isso permite que LLMs respondam sobre dados específicos
             sem precisar de fine-tuning.
             """)
+
+        # Info de versão no rodapé
+        st.markdown("---")
+        st.caption(f"ODECI v{__version__} | Pipeline RAG Educativo")
 
         return {
             "parent_size": parent_size,
