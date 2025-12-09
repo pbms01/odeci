@@ -12,7 +12,7 @@ Demonstra visualmente o pipeline RAG (Retrieval-Augmented Generation):
 """
 
 # Versão da aplicação
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 
 import streamlit as st
 import tempfile
@@ -1688,9 +1688,27 @@ def display_retrieval_results(chunks):
         Com os chunks recuperados, um LLM gera uma resposta fundamentada:
         """)
 
-        # Montar contexto
-        context_texts = [r['chunk'].text for r in final_results[:5]]
-        context_preview = "\n\n".join([f"[{i+1}] {text[:200]}..." for i, text in enumerate(context_texts[:3])])
+        # Montar contexto - incluindo parent quando configurado
+        context_texts = []
+        for r in final_results[:5]:
+            chunk = r['chunk']
+            chunk_text = chunk.text
+
+            # Se include_parent está ativo, adicionar contexto do parent
+            if include_parent and chunk.parent_id:
+                parent = next((p for p in chunks.parent_chunks if p.id == chunk.parent_id), None)
+                if parent:
+                    # Usar o parent como contexto expandido
+                    chunk_text = f"[Contexto expandido do parent]\n{parent.text}\n\n[Trecho específico]\n{chunk.text}"
+
+            context_texts.append(chunk_text)
+
+        # Preview do contexto
+        context_preview = "\n\n".join([f"[{i+1}] {text[:300]}..." for i, text in enumerate(context_texts[:3])])
+
+        # Indicador de expansão de contexto
+        if include_parent:
+            st.info("📎 **Expansão de Contexto Ativa:** O contexto do chunk parent está sendo incluído para maior completude.")
 
         prompt_template = f"""
 **System Prompt:**
