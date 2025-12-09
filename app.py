@@ -12,7 +12,7 @@ Demonstra visualmente o pipeline RAG (Retrieval-Augmented Generation):
 """
 
 # Versão da aplicação
-__version__ = "0.3.1"
+__version__ = "0.4.0"
 
 import streamlit as st
 import tempfile
@@ -1437,33 +1437,88 @@ def execute_real_retrieval(query: str, chunks, top_k: int, use_rerank: bool, api
         score_data = {f"#{i+1}": r["score"] for i, r in enumerate(top_results[:10])}
         st.bar_chart(score_data)
 
-    # Etapa 3: Reranking (simulado por enquanto, poderia usar Cohere)
+    # Etapa 3: Reranking com Voyage AI
     if use_rerank:
         with st.container():
-            st.markdown("### 3️⃣ Reranking")
+            st.markdown("### 3️⃣ Reranking com Cross-Encoder (Voyage AI)")
 
-            st.info("💡 Reranking com Cross-Encoder ainda não implementado com API real. Usando scores de similaridade como base.")
+            st.markdown("""
+            O **Reranker** usa um modelo cross-encoder que analisa query + documento juntos,
+            sendo mais preciso que embeddings separados (bi-encoder).
 
-            # Por enquanto, apenas ajustar ligeiramente os scores
-            import random
-            random.seed(42)
-            for r in top_results:
-                # Pequeno ajuste baseado no score original
-                r["rerank_score"] = min(0.99, r["score"] + random.uniform(-0.05, 0.1))
+            ```
+            Input: query + documento (processados juntos)
+            Output: relevance_score (0 a 1)
+            ```
+            """)
 
-            top_results.sort(key=lambda x: x["rerank_score"], reverse=True)
+            with st.spinner("Aplicando reranking via Voyage AI..."):
+                try:
+                    # Preparar documentos para reranking
+                    documents = [r["chunk"].text for r in top_results]
+
+                    # Chamar API de reranking
+                    rerank_response = client.rerank(
+                        query=query,
+                        documents=documents,
+                        model="rerank-2",  # Modelo de reranking da Voyage
+                        top_k=len(documents)  # Retornar todos para manter ordem original
+                    )
+
+                    # Criar mapeamento de índice original para novo score
+                    rerank_scores = {}
+                    for result in rerank_response.results:
+                        rerank_scores[result.index] = result.relevance_score
+
+                    # Atualizar scores de reranking
+                    for i, r in enumerate(top_results):
+                        r["rerank_score"] = rerank_scores.get(i, 0.0)
+                        r["original_position"] = i + 1
+
+                    # Ordenar por score de reranking
+                    top_results.sort(key=lambda x: x["rerank_score"], reverse=True)
+
+                    st.success("✅ Reranking real aplicado via Voyage AI (rerank-2)")
+
+                except Exception as e:
+                    st.warning(f"⚠️ Erro no reranking real: {e}. Usando scores de similaridade.")
+                    # Fallback: usar scores de similaridade como rerank_score
+                    for r in top_results:
+                        r["rerank_score"] = r["score"]
 
             # Mostrar mudança de ranking
-            st.markdown("**Top 5 após reranking:**")
+            st.markdown("**Comparação: Posição Original vs Após Reranking:**")
             comparison_data = []
-            for i, r in enumerate(top_results[:5]):
+            for i, r in enumerate(top_results[:10]):
+                original_pos = r.get("original_position", "?")
+                movement = ""
+                if isinstance(original_pos, int):
+                    diff = original_pos - (i + 1)
+                    if diff > 0:
+                        movement = f"↑{diff}"
+                    elif diff < 0:
+                        movement = f"↓{abs(diff)}"
+                    else:
+                        movement = "="
+
                 comparison_data.append({
-                    "Posição": i + 1,
-                    "Score Similaridade": f"{r['score']:.4f}",
-                    "Score Rerank": f"{r['rerank_score']:.4f}",
-                    "Preview": r["chunk"].text[:60] + "..."
+                    "Nova Pos": i + 1,
+                    "Pos Original": original_pos,
+                    "Mudança": movement,
+                    "Similaridade": f"{r['score']:.4f}",
+                    "Rerank Score": f"{r['rerank_score']:.4f}",
+                    "Preview": r["chunk"].text[:50] + "..."
                 })
             st.dataframe(comparison_data, use_container_width=True)
+
+            # Estatísticas de reranking
+            rerank_scores_list = [r["rerank_score"] for r in top_results]
+            st.markdown(f"""
+            **Estatísticas de Reranking:**
+            - Score máximo: {max(rerank_scores_list):.4f}
+            - Score mínimo: {min(rerank_scores_list):.4f}
+            - Score médio: {np.mean(rerank_scores_list):.4f}
+            """)
 
     return top_results
 
