@@ -12,7 +12,7 @@ Demonstra visualmente o pipeline RAG (Retrieval-Augmented Generation):
 """
 
 # Versão da aplicação
-__version__ = "0.4.1"
+__version__ = "0.4.2"
 
 import streamlit as st
 import tempfile
@@ -578,7 +578,14 @@ def render_step_3_embedding(chunks):
     # Processo de Embedding
     st.subheader("📊 Processo de Embedding")
 
-    all_chunks = chunks.get_all_chunks()
+    # Usar apenas child_chunks para retrieval (evita duplicação de conteúdo)
+    # Parents são usados apenas para expansão de contexto, não para busca
+    all_chunks = chunks.child_chunks
+
+    st.info(f"""
+    📌 **Estratégia de Embedding:** Usando apenas **child chunks** ({len(all_chunks)} chunks) para retrieval.
+    Os parent chunks ({len(chunks.parent_chunks)}) são usados apenas para expansão de contexto.
+    """)
 
     # Mostrar modelo único
     st.markdown("**Modelo:** `voyage-3-large` (1024 dimensões)")
