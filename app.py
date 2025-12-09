@@ -12,7 +12,7 @@ Demonstra visualmente o pipeline RAG (Retrieval-Augmented Generation):
 """
 
 # Versão da aplicação
-__version__ = "0.4.2"
+__version__ = "0.4.4"
 
 import streamlit as st
 import tempfile
@@ -1658,7 +1658,12 @@ def display_retrieval_results(chunks):
             else:
                 score_color = "🔴"
 
-            with st.expander(f"{score_color} **Resultado #{i+1}** - Score: {score:.4f} | Seção: {chunk.metadata.section or 'N/A'}"):
+            # Preview do conteúdo para o header
+            content_preview = chunk.text[:100].replace('\n', ' ').strip()
+            if len(chunk.text) > 100:
+                content_preview += "..."
+
+            with st.expander(f"{score_color} **Resultado #{i+1}** - Score: {score:.4f} | {content_preview}"):
                 col1, col2 = st.columns([3, 1])
 
                 with col1:
@@ -1670,6 +1675,10 @@ def display_retrieval_results(chunks):
                     st.markdown(f"- **Domínio:** {chunk.metadata.domain}")
                     st.markdown(f"- **Tokens:** {chunk.metadata.token_count}")
                     st.markdown(f"- **Nível:** {chunk.level.value}")
+                    section_short = (chunk.metadata.section or 'N/A')[:50]
+                    if len(chunk.metadata.section or '') > 50:
+                        section_short += "..."
+                    st.markdown(f"- **Seção:** {section_short}")
 
                 # Contexto do parent
                 if include_parent and chunk.parent_id:
@@ -1695,27 +1704,51 @@ def display_retrieval_results(chunks):
         Com os chunks recuperados, um LLM gera uma resposta fundamentada:
         """)
 
-        # Montar contexto - incluindo parent quando configurado
+        # Montar contexto - evitando duplicação de parents
         context_texts = []
-        for r in final_results[:5]:
-            chunk = r['chunk']
-            chunk_text = chunk.text
+        included_parent_ids = set()  # Rastrear parents já incluídos
 
-            # Se include_parent está ativo, adicionar contexto do parent
-            if include_parent and chunk.parent_id:
-                parent = next((p for p in chunks.parent_chunks if p.id == chunk.parent_id), None)
+        if include_parent:
+            # Estratégia: incluir cada parent único uma vez, seguido dos trechos específicos
+            parent_to_children = {}  # parent_id -> lista de chunks
+
+            for r in final_results[:5]:
+                chunk = r['chunk']
+                if chunk.parent_id:
+                    if chunk.parent_id not in parent_to_children:
+                        parent_to_children[chunk.parent_id] = []
+                    parent_to_children[chunk.parent_id].append(chunk)
+                else:
+                    # Chunk sem parent, adicionar diretamente
+                    context_texts.append(chunk.text)
+
+            # Adicionar cada parent uma vez com seus trechos específicos
+            for parent_id, child_chunks in parent_to_children.items():
+                parent = next((p for p in chunks.parent_chunks if p.id == parent_id), None)
                 if parent:
-                    # Usar o parent como contexto expandido
-                    chunk_text = f"[Contexto expandido do parent]\n{parent.text}\n\n[Trecho específico]\n{chunk.text}"
+                    # Contexto do parent (uma vez)
+                    parent_context = f"[Contexto da seção]\n{parent.text[:1500]}{'...' if len(parent.text) > 1500 else ''}"
 
-            context_texts.append(chunk_text)
+                    # Trechos específicos recuperados desta seção
+                    specific_chunks = "\n\n".join([
+                        f"[Trecho relevante] {c.text}" for c in child_chunks
+                    ])
+
+                    combined = f"{parent_context}\n\n{specific_chunks}"
+                    context_texts.append(combined)
+                else:
+                    # Parent não encontrado, usar chunks diretamente
+                    for c in child_chunks:
+                        context_texts.append(c.text)
+
+            st.info(f"📎 **Expansão de Contexto Ativa:** {len(parent_to_children)} seção(ões) única(s) incluída(s) com seus trechos relevantes.")
+        else:
+            # Sem expansão, usar apenas os chunks diretamente
+            for r in final_results[:5]:
+                context_texts.append(r['chunk'].text)
 
         # Preview do contexto
-        context_preview = "\n\n".join([f"[{i+1}] {text[:300]}..." for i, text in enumerate(context_texts[:3])])
-
-        # Indicador de expansão de contexto
-        if include_parent:
-            st.info("📎 **Expansão de Contexto Ativa:** O contexto do chunk parent está sendo incluído para maior completude.")
+        context_preview = "\n\n".join([f"[{i+1}] {text[:400]}..." for i, text in enumerate(context_texts[:3])])
 
         prompt_template = f"""
 **System Prompt:**
